@@ -1,3 +1,10 @@
+---
+layout: post
+title:  "pwncollege蓝带笔记"
+date:   2024-08-17 23:48:14 +0800
+categories: PWN
+---
+
 最近刚刚在pwn.college上已经获得了蓝带，现在总结下：
 
 ## x86基础
