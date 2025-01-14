@@ -4,7 +4,6 @@ title:  "pwncollege蓝带笔记"
 date:   2024-08-17 23:48:14 +0800
 categories: PWN
 ---
-
 最近刚刚在pwn.college上已经获得了蓝带，现在总结下：
 
 ## x86基础
@@ -593,12 +592,246 @@ fmtstr_payload() 和 leak_stack()
 
 ## 堆问题
 
-coming
+堆结构比较复杂，分配器多种多样，这里只写了ptmalloc的机制，对堆进行攻击需要对堆的排布比较熟悉（难怪都叫“堆风水”）
+
+### ptmalloc设计的cache种类:
+
+1. 64 singly-linked tcache bins for allocations of size 16 to 1032 (functionally "covers" fastbins and smallbins)
+
+2. 10 singly-linked "fast" bins for allocations of size up to 160 bytes
+
+3. 1 doubly-linked "unsorted" bin to quickly stash free()d chunks that don't fit into tcache or
+
+   fastbins
+
+4. 64 doubly-linked "small" bins for allocations up to 512 bytes
+
+5. doubly-linked "large" bins (anything over 512 bytes) that contain different-sized chunks
+
+双向链表的设计是为了方便合并：合并两个相邻的chunk，合并发生在free和malloc的时候
+
+### malloc的简化过程：
+
+1. 检查tcache，
+2. fastbin
+3. 检查请求大小，小内存直接通过small bin，
+4. 清理 Fastbin
+5. 检查/sort unsortedbins(chunk如果太小，会被移动到small bins或者large bins中，如果大于请求的大小则会分割一块出来，剩下的放回unsortbins中，然后返回，不会继续遍历chunks)
+6. large bin
+7. mmap或者从heap剩下的空间里分配
+
+
+
+free由于cache有很多种，所以比较复杂。
+
+几种bin的放置顺序：
+
+1. 先检查M标志是否被设置，如果是的话，直接munmap掉
+2. 检查是否可以放入tcache
+3. 不能再检查fastbin是否满足
+4. 不能放入fastbin，检查M标志是否被设置，如果是的话，直接munmap掉（不知道为啥检查两次）
+5. 清理合并fastbins
+6. 放到unsorted bin中
+
+### tcache(glibc-2.26引入)
+
+tcache:a **caching** layer for "small" allocations (<1032 bytes on amd64) 
+
+有关结构题的定义：
+
+```c
+/* There is one of these for each thread, which contains the
+   per-thread cache (hence "tcache_perthread_struct").  Keeping
+   overall size low is mildly important.  Note that COUNTS and ENTRIES
+   are redundant (we could have just counted the linked list each
+   time), this is for performance reasons.  */
+typedef struct tcache_perthread_struct
+{
+  uint16_t counts[TCACHE_MAX_BINS];
+  tcache_entry *entries[TCACHE_MAX_BINS];
+} tcache_perthread_struct;
+
+typedef struct tcache_entry
+{
+  struct tcache_entry *next;
+  /* This field exists to detect double frees.  */
+  struct tcache_perthread_struct *key;
+} tcache_entry;
+
+struct malloc_chunk {
+
+  INTERNAL_SIZE_T      mchunk_prev_size;  /* Size of previous chunk (if free).  */
+  INTERNAL_SIZE_T      mchunk_size;       /* Size in bytes, including overhead. */
+
+  struct malloc_chunk* fd;         /* double links -- used only if free. */
+  struct malloc_chunk* bk;
+
+  /* Only used for large blocks: pointer to next larger size.  */
+  struct malloc_chunk* fd_nextsize; /* double links -- used only if free. */
+  struct malloc_chunk* bk_nextsize;
+};
+/* size field is or'ed with PREV_INUSE when previous adjacent chunk in use */
+#define PREV_INUSE 0x1
+
+/* extract inuse bit of previous chunk */
+#define prev_inuse(p)       ((p)->mchunk_size & PREV_INUSE)
+
+
+/* size field is or'ed with IS_MMAPPED if the chunk was obtained with mmap() */
+#define IS_MMAPPED 0x2
+
+/* check for mmap()'ed chunk */
+#define chunk_is_mmapped(p) ((p)->mchunk_size & IS_MMAPPED)
+
+
+/* size field is or'ed with NON_MAIN_ARENA if the chunk was obtained
+   from a non-main arena.  This is only set immediately before handing
+   the chunk to the user, if necessary.  */
+#define NON_MAIN_ARENA 0x4
+```
+
+chunk的结构：
+
+allocated chunk:
+
+```
+    chunk-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of previous chunk, if unallocated (P clear)  |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of chunk, in bytes                     |A|M|P|
+      mem-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             User data starts here...                          .
+	    .                                                               .
+	    .             (malloc_usable_size() bytes)                      .
+	    .                                                               |
+nextchunk-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             (size of chunk, but used for application data)    |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of next chunk, in bytes                |A|0|1|
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+```
+
+free chunk:
+
+```
+    chunk-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of previous chunk, if unallocated (P clear)  |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    `head:' |             Size of chunk, in bytes                     |A|0|P|
+      mem-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Forward pointer to next chunk in list             |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Back pointer to previous chunk in list            |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Unused space (may be 0 bytes long)                .
+	    .                                                               .
+	    .                                                               |
+nextchunk-> +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    `foot:' |             Size of chunk, in bytes                           |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of next chunk, in bytes                |A|0|0|
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+```
+
+
+
+单链表结构
+
+alloca过程：
+
+1. Select: 根据请求的size选择合适的bin，索引`idx = (requested_size - 1) / 16;`
+
+2. Check: 检查是否有空闲的cache可用 `if our_tcache_perthread_struct.count[idx] > 0;`
+
+3. Reuse: 如果可用，分配链表头部的chunk
+
+   ```
+   unsigned long *to_return = our_tcache_perthread_struct.entries[idx];
+   tcache_perthread_struct.entries[idx] = to_return[0];
+   tcache_perthread_struct.count[idx]--;
+   return to_return;
+   ```
+
+4. Clear:  key清空
+
+5. Checking: 检查下一个链表指针是否合法
+
+
+
+#### 防护
+
+##### Key是在glibc-2.29引入主要是为了防止double-free的问题。
+
+##### Safe-linking （glibc-2.32引入）
+
+tcache中的next指针被xor处理保存(mangle)。
+
+demangle后的值低4位必须是0。
+
+```c
+#define PROTECT_PTR(pos, ptr)
+((__typeof (ptr)) ((((size_t) pos) >> 12) ^ ((size_t) ptr)))
+#define REVEAL_PTR(ptr) PROTECT_PTR (&ptr, ptr)
+```
+
+
+
+### 注意点
+
+printf，scanf将会使用malloc，
+
+可以用setbuf禁用:
+
+```c
+setbuf (stdout, NULL);
+setbuf(stdin, NULL);
+```
+
+### Fastbins
+
+1. 单链表并且也有safe-linking机制，与tcache相似
+2. 链表没有长度限制，tcache限制有7个
+3. 大小支持到88byte，tcach可以支持到1032
+4. P标志位会被永远设置，阻止合并
+5. double free检测只支持最顶部的chunk检测（由于它没有长度限制，都检测一遍那还了得，还干不干别的事了）
+
+### Small bins
+
+1. 双向链表
+2. 大小支持到1024 bytes
+3. Fast access，但是支持合并
+
+### unsorted bins
+
+1. 双向链表
+2. 存放large bins和small bins，因此任何无法放进fastbins的都可以放这里
+3. malloc的时候这个unsorted bins会被检查，如果chunk不满足malloc，它就会被放进合适的small/large bins
+
+### large bins
+
+1. 双向链表
+2. bins包含 a range of size
+3. 这意味着每个bin都被排好序，最大的在前
+4. bk_nextsize is used "jump up" in size category quickly，因为bins包含的是size的范围，这样如果区间没有大于请求的大小的chunk，就可以直接通过这个jump up到下一个区间的chunk里不需要再回bin中去遍历了。
+
+
+
+### exploitions
+
+- Double Free
+
+- Use After Free
+
+- Corrupting Heap Metadata
+
+- Overlapping Allocations
 
 ## Linux内核
 
-coming
+[writeup](https://github.com/seacho/writeup/tree/main/pwncollege/kernelExp)
 
 ## 基于CPU缓存的攻击
 
-详见demo
+详见[demo](https://github.com/seacho/writeup/blob/main/pwncollege/microarchitecture/meltdown.c)

@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.3.4">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2025-01-13T10:24:31+08:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">seacho’s blog</title><subtitle>Keep track of interesting things
-</subtitle><author><name>seacho</name></author><entry><title type="html">pwncollege蓝带笔记</title><link href="http://localhost:4000/pwn/2024/08/17/pwncollege%E8%93%9D%E5%B8%A6%E7%AC%94%E8%AE%B0.html" rel="alternate" type="text/html" title="pwncollege蓝带笔记" /><published>2024-08-17T23:48:14+08:00</published><updated>2024-08-17T23:48:14+08:00</updated><id>http://localhost:4000/pwn/2024/08/17/pwncollege%E8%93%9D%E5%B8%A6%E7%AC%94%E8%AE%B0</id><content type="html" xml:base="http://localhost:4000/pwn/2024/08/17/pwncollege%E8%93%9D%E5%B8%A6%E7%AC%94%E8%AE%B0.html"><![CDATA[<p>最近刚刚在pwn.college上已经获得了蓝带，现在总结下：</p>
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.3.4">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2025-01-14T13:30:56+08:00</updated><id>/feed.xml</id><title type="html">seacho’s blog</title><subtitle>Keep track of interesting things
+</subtitle><author><name>seacho</name></author><entry><title type="html">pwncollege蓝带笔记</title><link href="/pwn/2024/08/17/pwncollege%E8%93%9D%E5%B8%A6%E7%AC%94%E8%AE%B0.html" rel="alternate" type="text/html" title="pwncollege蓝带笔记" /><published>2024-08-17T23:48:14+08:00</published><updated>2024-08-17T23:48:14+08:00</updated><id>/pwn/2024/08/17/pwncollege%E8%93%9D%E5%B8%A6%E7%AC%94%E8%AE%B0</id><content type="html" xml:base="/pwn/2024/08/17/pwncollege%E8%93%9D%E5%B8%A6%E7%AC%94%E8%AE%B0.html"><![CDATA[<p>最近刚刚在pwn.college上已经获得了蓝带，现在总结下：</p>
 
 <h2 id="x86基础">x86基础</h2>
 
@@ -728,21 +728,274 @@ What if we jump to the 0x31 via another vulnerability?
 
 <h2 id="堆问题">堆问题</h2>
 
-<p>coming</p>
+<p>堆结构比较复杂，分配器多种多样，这里只写了ptmalloc的机制，对堆进行攻击需要对堆的排布比较熟悉（难怪都叫“堆风水”）</p>
+
+<h3 id="ptmalloc设计的cache种类">ptmalloc设计的cache种类:</h3>
+
+<ol>
+  <li>
+    <p>64 singly-linked tcache bins for allocations of size 16 to 1032 (functionally “covers” fastbins and smallbins)</p>
+  </li>
+  <li>
+    <p>10 singly-linked “fast” bins for allocations of size up to 160 bytes</p>
+  </li>
+  <li>
+    <p>1 doubly-linked “unsorted” bin to quickly stash free()d chunks that don’t fit into tcache or</p>
+
+    <p>fastbins</p>
+  </li>
+  <li>
+    <p>64 doubly-linked “small” bins for allocations up to 512 bytes</p>
+  </li>
+  <li>
+    <p>doubly-linked “large” bins (anything over 512 bytes) that contain different-sized chunks</p>
+  </li>
+</ol>
+
+<p>双向链表的设计是为了方便合并：合并两个相邻的chunk，合并发生在free和malloc的时候</p>
+
+<h3 id="malloc的简化过程">malloc的简化过程：</h3>
+
+<ol>
+  <li>检查tcache，</li>
+  <li>fastbin</li>
+  <li>检查请求大小，小内存直接通过small bin，</li>
+  <li>清理 Fastbin</li>
+  <li>检查/sort unsortedbins(chunk如果太小，会被移动到small bins或者large bins中，如果大于请求的大小则会分割一块出来，剩下的放回unsortbins中，然后返回，不会继续遍历chunks)</li>
+  <li>large bin</li>
+  <li>mmap或者从heap剩下的空间里分配</li>
+</ol>
+
+<p>free由于cache有很多种，所以比较复杂。</p>
+
+<p>几种bin的放置顺序：</p>
+
+<ol>
+  <li>先检查M标志是否被设置，如果是的话，直接munmap掉</li>
+  <li>检查是否可以放入tcache</li>
+  <li>不能再检查fastbin是否满足</li>
+  <li>不能放入fastbin，检查M标志是否被设置，如果是的话，直接munmap掉（不知道为啥检查两次）</li>
+  <li>清理合并fastbins</li>
+  <li>放到unsorted bin中</li>
+</ol>
+
+<h3 id="tcacheglibc-226引入">tcache(glibc-2.26引入)</h3>
+
+<p>tcache:a <strong>caching</strong> layer for “small” allocations (&lt;1032 bytes on amd64)</p>
+
+<p>有关结构题的定义：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/* There is one of these for each thread, which contains the
+   per-thread cache (hence "tcache_perthread_struct").  Keeping
+   overall size low is mildly important.  Note that COUNTS and ENTRIES
+   are redundant (we could have just counted the linked list each
+   time), this is for performance reasons.  */</span>
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">tcache_perthread_struct</span>
+<span class="p">{</span>
+  <span class="kt">uint16_t</span> <span class="n">counts</span><span class="p">[</span><span class="n">TCACHE_MAX_BINS</span><span class="p">];</span>
+  <span class="n">tcache_entry</span> <span class="o">*</span><span class="n">entries</span><span class="p">[</span><span class="n">TCACHE_MAX_BINS</span><span class="p">];</span>
+<span class="p">}</span> <span class="n">tcache_perthread_struct</span><span class="p">;</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">tcache_entry</span>
+<span class="p">{</span>
+  <span class="k">struct</span> <span class="n">tcache_entry</span> <span class="o">*</span><span class="n">next</span><span class="p">;</span>
+  <span class="cm">/* This field exists to detect double frees.  */</span>
+  <span class="k">struct</span> <span class="n">tcache_perthread_struct</span> <span class="o">*</span><span class="n">key</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">tcache_entry</span><span class="p">;</span>
+
+<span class="k">struct</span> <span class="n">malloc_chunk</span> <span class="p">{</span>
+
+  <span class="n">INTERNAL_SIZE_T</span>      <span class="n">mchunk_prev_size</span><span class="p">;</span>  <span class="cm">/* Size of previous chunk (if free).  */</span>
+  <span class="n">INTERNAL_SIZE_T</span>      <span class="n">mchunk_size</span><span class="p">;</span>       <span class="cm">/* Size in bytes, including overhead. */</span>
+
+  <span class="k">struct</span> <span class="n">malloc_chunk</span><span class="o">*</span> <span class="n">fd</span><span class="p">;</span>         <span class="cm">/* double links -- used only if free. */</span>
+  <span class="k">struct</span> <span class="n">malloc_chunk</span><span class="o">*</span> <span class="n">bk</span><span class="p">;</span>
+
+  <span class="cm">/* Only used for large blocks: pointer to next larger size.  */</span>
+  <span class="k">struct</span> <span class="n">malloc_chunk</span><span class="o">*</span> <span class="n">fd_nextsize</span><span class="p">;</span> <span class="cm">/* double links -- used only if free. */</span>
+  <span class="k">struct</span> <span class="n">malloc_chunk</span><span class="o">*</span> <span class="n">bk_nextsize</span><span class="p">;</span>
+<span class="p">};</span>
+<span class="cm">/* size field is or'ed with PREV_INUSE when previous adjacent chunk in use */</span>
+<span class="cp">#define PREV_INUSE 0x1
+</span>
+<span class="cm">/* extract inuse bit of previous chunk */</span>
+<span class="cp">#define prev_inuse(p)       ((p)-&gt;mchunk_size &amp; PREV_INUSE)
+</span>
+
+<span class="cm">/* size field is or'ed with IS_MMAPPED if the chunk was obtained with mmap() */</span>
+<span class="cp">#define IS_MMAPPED 0x2
+</span>
+<span class="cm">/* check for mmap()'ed chunk */</span>
+<span class="cp">#define chunk_is_mmapped(p) ((p)-&gt;mchunk_size &amp; IS_MMAPPED)
+</span>
+
+<span class="cm">/* size field is or'ed with NON_MAIN_ARENA if the chunk was obtained
+   from a non-main arena.  This is only set immediately before handing
+   the chunk to the user, if necessary.  */</span>
+<span class="cp">#define NON_MAIN_ARENA 0x4
+</span></code></pre></div></div>
+
+<p>chunk的结构：</p>
+
+<p>allocated chunk:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    chunk-&gt; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of previous chunk, if unallocated (P clear)  |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of chunk, in bytes                     |A|M|P|
+      mem-&gt; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             User data starts here...                          .
+	    .                                                               .
+	    .             (malloc_usable_size() bytes)                      .
+	    .                                                               |
+nextchunk-&gt; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             (size of chunk, but used for application data)    |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of next chunk, in bytes                |A|0|1|
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+</code></pre></div></div>
+
+<p>free chunk:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    chunk-&gt; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of previous chunk, if unallocated (P clear)  |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    `head:' |             Size of chunk, in bytes                     |A|0|P|
+      mem-&gt; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Forward pointer to next chunk in list             |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Back pointer to previous chunk in list            |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Unused space (may be 0 bytes long)                .
+	    .                                                               .
+	    .                                                               |
+nextchunk-&gt; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    `foot:' |             Size of chunk, in bytes                           |
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	    |             Size of next chunk, in bytes                |A|0|0|
+	    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+</code></pre></div></div>
+
+<p>单链表结构</p>
+
+<p>alloca过程：</p>
+
+<ol>
+  <li>
+    <p>Select: 根据请求的size选择合适的bin，索引<code class="language-plaintext highlighter-rouge">idx = (requested_size - 1) / 16;</code></p>
+  </li>
+  <li>
+    <p>Check: 检查是否有空闲的cache可用 <code class="language-plaintext highlighter-rouge">if our_tcache_perthread_struct.count[idx] &gt; 0;</code></p>
+  </li>
+  <li>
+    <p>Reuse: 如果可用，分配链表头部的chunk</p>
+
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>unsigned long *to_return = our_tcache_perthread_struct.entries[idx];
+tcache_perthread_struct.entries[idx] = to_return[0];
+tcache_perthread_struct.count[idx]--;
+return to_return;
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Clear:  key清空</p>
+  </li>
+  <li>
+    <p>Checking: 检查下一个链表指针是否合法</p>
+  </li>
+</ol>
+
+<h4 id="防护">防护</h4>
+
+<h5 id="key是在glibc-229引入主要是为了防止double-free的问题">Key是在glibc-2.29引入主要是为了防止double-free的问题。</h5>
+
+<h5 id="safe-linking-glibc-232引入">Safe-linking （glibc-2.32引入）</h5>
+
+<p>tcache中的next指针被xor处理保存(mangle)。</p>
+
+<p>demangle后的值低4位必须是0。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define PROTECT_PTR(pos, ptr)
+</span><span class="p">((</span><span class="n">__typeof</span> <span class="p">(</span><span class="n">ptr</span><span class="p">))</span> <span class="p">((((</span><span class="kt">size_t</span><span class="p">)</span> <span class="n">pos</span><span class="p">)</span> <span class="o">&gt;&gt;</span> <span class="mi">12</span><span class="p">)</span> <span class="o">^</span> <span class="p">((</span><span class="kt">size_t</span><span class="p">)</span> <span class="n">ptr</span><span class="p">)))</span>
+<span class="cp">#define REVEAL_PTR(ptr) PROTECT_PTR (&amp;ptr, ptr)
+</span></code></pre></div></div>
+
+<h3 id="注意点-1">注意点</h3>
+
+<p>printf，scanf将会使用malloc，</p>
+
+<p>可以用setbuf禁用:</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">setbuf</span> <span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+<span class="n">setbuf</span><span class="p">(</span><span class="n">stdin</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h3 id="fastbins">Fastbins</h3>
+
+<ol>
+  <li>单链表并且也有safe-linking机制，与tcache相似</li>
+  <li>链表没有长度限制，tcache限制有7个</li>
+  <li>大小支持到88byte，tcach可以支持到1032</li>
+  <li>P标志位会被永远设置，阻止合并</li>
+  <li>double free检测只支持最顶部的chunk检测（由于它没有长度限制，都检测一遍那还了得，还干不干别的事了）</li>
+</ol>
+
+<h3 id="small-bins">Small bins</h3>
+
+<ol>
+  <li>双向链表</li>
+  <li>大小支持到1024 bytes</li>
+  <li>Fast access，但是支持合并</li>
+</ol>
+
+<h3 id="unsorted-bins">unsorted bins</h3>
+
+<ol>
+  <li>双向链表</li>
+  <li>存放large bins和small bins，因此任何无法放进fastbins的都可以放这里</li>
+  <li>malloc的时候这个unsorted bins会被检查，如果chunk不满足malloc，它就会被放进合适的small/large bins</li>
+</ol>
+
+<h3 id="large-bins">large bins</h3>
+
+<ol>
+  <li>双向链表</li>
+  <li>bins包含 a range of size</li>
+  <li>这意味着每个bin都被排好序，最大的在前</li>
+  <li>bk_nextsize is used “jump up” in size category quickly，因为bins包含的是size的范围，这样如果区间没有大于请求的大小的chunk，就可以直接通过这个jump up到下一个区间的chunk里不需要再回bin中去遍历了。</li>
+</ol>
+
+<h3 id="exploitions">exploitions</h3>
+
+<ul>
+  <li>
+    <p>Double Free</p>
+  </li>
+  <li>
+    <p>Use After Free</p>
+  </li>
+  <li>
+    <p>Corrupting Heap Metadata</p>
+  </li>
+  <li>
+    <p>Overlapping Allocations</p>
+  </li>
+</ul>
 
 <h2 id="linux内核">Linux内核</h2>
 
-<p>coming</p>
+<p><a href="https://github.com/seacho/writeup/tree/main/pwncollege/kernelExp">writeup</a></p>
 
 <h2 id="基于cpu缓存的攻击">基于CPU缓存的攻击</h2>
 
-<p>详见demo</p>]]></content><author><name>seacho</name></author><category term="PWN" /><summary type="html"><![CDATA[最近刚刚在pwn.college上已经获得了蓝带，现在总结下：]]></summary></entry><entry><title type="html">My Example Post</title><link href="http://localhost:4000/2016/05/20/my-example-post.html" rel="alternate" type="text/html" title="My Example Post" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>http://localhost:4000/2016/05/20/my-example-post</id><content type="html" xml:base="http://localhost:4000/2016/05/20/my-example-post.html"><![CDATA[<p>Eos eu docendi tractatos sapientem, brute option menandri in vix, quando vivendo accommodare te ius. Nec melius fastidii constituam id, viderer theophrastus ad sit, hinc semper periculis cum id. Noluisse postulant assentior est in, no choro sadipscing repudiandae vix. Vis in euismod delenit dignissim. Ex quod nostrum sit, suas decore animal id ius, nobis solet detracto quo te.</p>
+<p>详见<a href="https://github.com/seacho/writeup/blob/main/pwncollege/microarchitecture/meltdown.c">demo</a></p>]]></content><author><name>seacho</name></author><category term="PWN" /><summary type="html"><![CDATA[最近刚刚在pwn.college上已经获得了蓝带，现在总结下：]]></summary></entry><entry><title type="html">My Example Post</title><link href="/2016/05/20/my-example-post.html" rel="alternate" type="text/html" title="My Example Post" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>/2016/05/20/my-example-post</id><content type="html" xml:base="/2016/05/20/my-example-post.html"><![CDATA[<p>Eos eu docendi tractatos sapientem, brute option menandri in vix, quando vivendo accommodare te ius. Nec melius fastidii constituam id, viderer theophrastus ad sit, hinc semper periculis cum id. Noluisse postulant assentior est in, no choro sadipscing repudiandae vix. Vis in euismod delenit dignissim. Ex quod nostrum sit, suas decore animal id ius, nobis solet detracto quo te.</p>
 
-<p>No laudem altera adolescens has, volumus lucilius eum no. Eam ei nulla audiam efficiantur. Suas affert per no, ei tale nibh sea. Sea ne magna harum, in denique scriptorem sea, cetero alienum tibique ei eos. Labores persequeris referrentur eos ei.</p>]]></content><author><name>seacho</name></author><summary type="html"><![CDATA[Eos eu docendi tractatos sapientem, brute option menandri in vix, quando vivendo accommodare te ius. Nec melius fastidii constituam id, viderer theophrastus ad sit, hinc semper periculis cum id. Noluisse postulant assentior est in, no choro sadipscing repudiandae vix. Vis in euismod delenit dignissim. Ex quod nostrum sit, suas decore animal id ius, nobis solet detracto quo te.]]></summary></entry><entry><title type="html">Some articles are just so long they deserve a really long title to see if things will break well</title><link href="http://localhost:4000/misc/2016/05/20/super-long-article.html" rel="alternate" type="text/html" title="Some articles are just so long they deserve a really long title to see if things will break well" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>http://localhost:4000/misc/2016/05/20/super-long-article</id><content type="html" xml:base="http://localhost:4000/misc/2016/05/20/super-long-article.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
+<p>No laudem altera adolescens has, volumus lucilius eum no. Eam ei nulla audiam efficiantur. Suas affert per no, ei tale nibh sea. Sea ne magna harum, in denique scriptorem sea, cetero alienum tibique ei eos. Labores persequeris referrentur eos ei.</p>]]></content><author><name>seacho</name></author><summary type="html"><![CDATA[Eos eu docendi tractatos sapientem, brute option menandri in vix, quando vivendo accommodare te ius. Nec melius fastidii constituam id, viderer theophrastus ad sit, hinc semper periculis cum id. Noluisse postulant assentior est in, no choro sadipscing repudiandae vix. Vis in euismod delenit dignissim. Ex quod nostrum sit, suas decore animal id ius, nobis solet detracto quo te.]]></summary></entry><entry><title type="html">Some articles are just so long they deserve a really long title to see if things will break well</title><link href="/misc/2016/05/20/super-long-article.html" rel="alternate" type="text/html" title="Some articles are just so long they deserve a really long title to see if things will break well" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>/misc/2016/05/20/super-long-article</id><content type="html" xml:base="/misc/2016/05/20/super-long-article.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
 
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
 
-<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>]]></content><author><name>seacho</name></author><category term="misc" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.]]></summary></entry><entry><title type="html">This post demonstrates post content styles</title><link href="http://localhost:4000/junk/2016/05/20/this-post-demonstrates-post-content-styles.html" rel="alternate" type="text/html" title="This post demonstrates post content styles" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>http://localhost:4000/junk/2016/05/20/this-post-demonstrates-post-content-styles</id><content type="html" xml:base="http://localhost:4000/junk/2016/05/20/this-post-demonstrates-post-content-styles.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.</p>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>]]></content><author><name>seacho</name></author><category term="misc" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.]]></summary></entry><entry><title type="html">This post demonstrates post content styles</title><link href="/junk/2016/05/20/this-post-demonstrates-post-content-styles.html" rel="alternate" type="text/html" title="This post demonstrates post content styles" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>/junk/2016/05/20/this-post-demonstrates-post-content-styles</id><content type="html" xml:base="/junk/2016/05/20/this-post-demonstrates-post-content-styles.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.</p>
 
 <h2 id="some-great-heading-h2">Some great heading (h2)</h2>
 
@@ -899,7 +1152,7 @@ What if we jump to the 0x31 via another vulnerability?
       <td>lorem ipsum dolor sit amet consectetur</td>
     </tr>
   </tbody>
-</table>]]></content><author><name>Bart Simpson</name></author><category term="junk" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.]]></summary></entry><entry><title type="html">Welcome To Jekyll</title><link href="http://localhost:4000/2016/05/20/welcome-to-jekyll.html" rel="alternate" type="text/html" title="Welcome To Jekyll" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>http://localhost:4000/2016/05/20/welcome-to-jekyll</id><content type="html" xml:base="http://localhost:4000/2016/05/20/welcome-to-jekyll.html"><![CDATA[<p>You’ll find this post in your <code class="language-plaintext highlighter-rouge">_posts</code> directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run <code class="language-plaintext highlighter-rouge">jekyll serve</code>, which launches a web server and auto-regenerates your site when a file is updated.</p>
+</table>]]></content><author><name>Bart Simpson</name></author><category term="junk" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.]]></summary></entry><entry><title type="html">Welcome To Jekyll</title><link href="/2016/05/20/welcome-to-jekyll.html" rel="alternate" type="text/html" title="Welcome To Jekyll" /><published>2016-05-20T00:00:00+08:00</published><updated>2016-05-20T00:00:00+08:00</updated><id>/2016/05/20/welcome-to-jekyll</id><content type="html" xml:base="/2016/05/20/welcome-to-jekyll.html"><![CDATA[<p>You’ll find this post in your <code class="language-plaintext highlighter-rouge">_posts</code> directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run <code class="language-plaintext highlighter-rouge">jekyll serve</code>, which launches a web server and auto-regenerates your site when a file is updated.</p>
 
 <p>To add new posts, simply add a file in the <code class="language-plaintext highlighter-rouge">_posts</code> directory that follows the convention <code class="language-plaintext highlighter-rouge">YYYY-MM-DD-name-of-post.ext</code> and includes the necessary front matter. Take a look at the source for this post to get an idea about how it works.</p>
 
@@ -911,4 +1164,4 @@ What if we jump to the 0x31 via another vulnerability?
 <span class="n">print_hi</span><span class="p">(</span><span class="s1">'Tom'</span><span class="p">)</span>
 <span class="c1">#=&gt; prints 'Hi, Tom' to STDOUT.</span></code></pre></figure>
 
-<p>Check out the <a href="http://jekyllrb.com/docs/home">Jekyll docs</a> for more info on how to get the most out of Jekyll. File all bugs/feature requests at <a href="https://github.com/jekyll/jekyll">Jekyll’s GitHub repo</a>. If you have questions, you can ask them on <a href="https://talk.jekyllrb.com/">Jekyll Talk</a>.</p>]]></content><author><name>seacho</name></author><summary type="html"><![CDATA[You’ll find this post in your _posts directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run jekyll serve, which launches a web server and auto-regenerates your site when a file is updated.]]></summary></entry><entry><title type="html">Some articles are just so short that we have to make the footer stick</title><link href="http://localhost:4000/misc/2016/05/19/super-short-article.html" rel="alternate" type="text/html" title="Some articles are just so short that we have to make the footer stick" /><published>2016-05-19T00:00:00+08:00</published><updated>2016-05-19T00:00:00+08:00</updated><id>http://localhost:4000/misc/2016/05/19/super-short-article</id><content type="html" xml:base="http://localhost:4000/misc/2016/05/19/super-short-article.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>]]></content><author><name>seacho</name></author><category term="misc" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]></summary></entry></feed>
+<p>Check out the <a href="http://jekyllrb.com/docs/home">Jekyll docs</a> for more info on how to get the most out of Jekyll. File all bugs/feature requests at <a href="https://github.com/jekyll/jekyll">Jekyll’s GitHub repo</a>. If you have questions, you can ask them on <a href="https://talk.jekyllrb.com/">Jekyll Talk</a>.</p>]]></content><author><name>seacho</name></author><summary type="html"><![CDATA[You’ll find this post in your _posts directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run jekyll serve, which launches a web server and auto-regenerates your site when a file is updated.]]></summary></entry><entry><title type="html">Some articles are just so short that we have to make the footer stick</title><link href="/misc/2016/05/19/super-short-article.html" rel="alternate" type="text/html" title="Some articles are just so short that we have to make the footer stick" /><published>2016-05-19T00:00:00+08:00</published><updated>2016-05-19T00:00:00+08:00</updated><id>/misc/2016/05/19/super-short-article</id><content type="html" xml:base="/misc/2016/05/19/super-short-article.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>]]></content><author><name>seacho</name></author><category term="misc" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]></summary></entry></feed>
