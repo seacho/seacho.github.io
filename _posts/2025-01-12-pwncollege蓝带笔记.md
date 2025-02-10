@@ -268,6 +268,28 @@ gcc -Wl -N --static -nostdlib -o test test.s
 
 ### Stack Canary
 
+与canary相关的编译器选项
+
+```
+-fstack-protector 只为局部变量中含有数组的函数开启保护
+-fstack-protector-all 为所有函数开启保护
+-fstack-protector-strong 为局部变量地址作为赋值语句的右值及函数参数、含有数组类型的局部变量、`register`声明的局部变量开启保护
+ 
+-fstack-protector-explicit 对含义stack_protect attribute的函数开启保护
+ 
+-fno-stack-protector 禁用保护
+```
+
+Canary的值是与线程相关的，不同的线程值不一样。从`fx+0x28`的位置取出
+
+LibC使用fs寄存器存放线程局部存储TLS (Thread Local Stroage)，TLS可用于支持多线程同时访问同1个全局变量或静态变量。TLS的存在使得每个线程都独占1份全局变量及静态变量，不同线程间对同1个全局变量或静态变量的修改并不会产生冲突。这种特殊的变量需要`__thread`关键字修饰，编译器看到`__thread`修饰的变量后，二进制文件内会将这些变量放入`.tdata `节和`.tbss`节内。
+
+(ps:在GDB中观察`fs`寄存器时，会发现`fs`寄存器的值永远是0，这是因为软件调试器GDB对系统寄存器没有访问权限导致的。但是内核提供了`arch_prctl`接口，用于修改或获取特定于体系结构的进程或线程状态。)
+
+_start ->init_tls初始化tls信息 -> security_init产生随机值。但是随机值`stack_chk_guard`与`_dl_random`的值相关。这个值咋来的呢？可以使用gdb的内存监视断点观察。中断在`_dl_sysdep_parse_arguments`函数中
+
+
+
 1. 泄漏Canary，
 
 2. 对于fork的程序，可以使用brute-force的方法
@@ -301,6 +323,8 @@ gcc -Wl -N --static -nostdlib -o test test.s
    
 
 4. 在程序返回之前劫持程序
+
+5. 覆盖.got.plt中的__stack_chk_fail函数地址
 
 ### ASLR (Address Space Layout Randomization)
 

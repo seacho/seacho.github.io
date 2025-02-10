@@ -380,6 +380,25 @@ qemu useful option:
 
 <h3 id="stack-canary">Stack Canary</h3>
 
+<p>与canary相关的编译器选项</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>-fstack-protector 只为局部变量中含有数组的函数开启保护
+-fstack-protector-all 为所有函数开启保护
+-fstack-protector-strong 为局部变量地址作为赋值语句的右值及函数参数、含有数组类型的局部变量、`register`声明的局部变量开启保护
+ 
+-fstack-protector-explicit 对含义stack_protect attribute的函数开启保护
+ 
+-fno-stack-protector 禁用保护
+</code></pre></div></div>
+
+<p>Canary的值是与线程相关的，不同的线程值不一样。从<code class="language-plaintext highlighter-rouge">fx+0x28</code>的位置取出</p>
+
+<p>LibC使用fs寄存器存放线程局部存储TLS (Thread Local Stroage)，TLS可用于支持多线程同时访问同1个全局变量或静态变量。TLS的存在使得每个线程都独占1份全局变量及静态变量，不同线程间对同1个全局变量或静态变量的修改并不会产生冲突。这种特殊的变量需要<code class="language-plaintext highlighter-rouge">__thread</code>关键字修饰，编译器看到<code class="language-plaintext highlighter-rouge">__thread</code>修饰的变量后，二进制文件内会将这些变量放入<code class="language-plaintext highlighter-rouge">.tdata </code>节和<code class="language-plaintext highlighter-rouge">.tbss</code>节内。</p>
+
+<p>(ps:在GDB中观察<code class="language-plaintext highlighter-rouge">fs</code>寄存器时，会发现<code class="language-plaintext highlighter-rouge">fs</code>寄存器的值永远是0，这是因为软件调试器GDB对系统寄存器没有访问权限导致的。但是内核提供了<code class="language-plaintext highlighter-rouge">arch_prctl</code>接口，用于修改或获取特定于体系结构的进程或线程状态。)</p>
+
+<p>_start -&gt;init_tls初始化tls信息 -&gt; security_init产生随机值。但是随机值<code class="language-plaintext highlighter-rouge">stack_chk_guard</code>与<code class="language-plaintext highlighter-rouge">_dl_random</code>的值相关。这个值咋来的呢？可以使用gdb的内存监视断点观察。中断在<code class="language-plaintext highlighter-rouge">_dl_sysdep_parse_arguments</code>函数中</p>
+
 <ol>
   <li>
     <p>泄漏Canary，</p>
@@ -412,6 +431,9 @@ qemu useful option:
   </li>
   <li>
     <p>在程序返回之前劫持程序</p>
+  </li>
+  <li>
+    <p>覆盖.got.plt中的__stack_chk_fail函数地址</p>
   </li>
 </ol>
 
