@@ -1,0 +1,15 @@
+
+
+** 内存管理
+
+内存管理这个话题很大，牵扯的细节很多。先来介绍x86-64cpu上的内核的内存的管理。
+**** Virtual memory layout
+cpu有一个特殊的寄存器存放第一级页表（PGD）的物理地址。页表中的每一个表项(后面简称entry)必须要4KB大小对齐。
+每一个page table entry 都是一个 =unsigned long(uint64_t)(declared as pxxval_t)= 类型的值，通过将这些类型中的每一个封装在一个结构体中，可以强制执行一些makeshift类型安全比如 =typedef struct { pgdval_t pgd; } pgd_t= 。PageTable的结构依赖于Intel 5-level paging是否开启。
+
+1. 在 4 级页表的 x86-64 架构中，虚拟地址空间为 48 位。
+
+
+2. 在 5 级页表的 x86-64 架构中，虚拟地址空间扩展到了 57 位。
+
+

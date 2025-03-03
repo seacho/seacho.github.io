@@ -1,0 +1,43 @@
+* MacOS
+
+使用[OSX-KVM](https://github.com/kholia/OSX-KVM)
+1. 使用fetco-macOS-v2.py下载镜像
+2. 使用OpenCore-Boot-macOS.sh运行虚拟机。
+关于调试后边再看
+
+* Frida逆向调试
+
+python虚拟环境中
+
+#+BEGIN_SRC python
+  pip install frida-tools
+  npm install frida
+#+END_SRC
+
+jadx-gui反编译工具
+adb logcat -c 清空日志
+adb logcat | grep ActivityManager 可以找到启动的activity
+
+frida -U com.example.androiddemo -l hook.js
+
+#+BEGIN_SRC JS
+function main ()
+  Java.perform (function(){
+    var LoginActivity = Java.use("com.github.lastingyang.androiddemo.Activity.LoginActivity");
+    LoginActivity.a.overload('java.lang.String', 'java.lang.String'). implementation = function (str, str2) {
+      var result = this.a(str, str2);
+      console.log ("LoginActivity.a:", str, str2, result);
+      return result;
+    }
+  })
+setImmediate (main);
+#+END_SRC
+
+
+* ctf - pwn
+
+
+#+BEGIN_SRC python
+  patchelf --set-interpreter ./libc/ld-linux-x86-64.so.2 --set-rpath ./libc filename
+
+#+END_SRC

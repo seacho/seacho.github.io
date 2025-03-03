@@ -1,0 +1,574 @@
+#+TITLE: Machine Learning, Neural Network, GPT
+#+DATE: 2025-02-26
+#+JEKYLL_LAYOUT: post
+#+JEKYLL_render_with_liquid: false
+#+JEKYLL_CATEGORIES: Math
+#+JEKYLL_TAGS: Math
+
+
+<script type="text/javascript" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+* 线性回归模型
+
+$$
+f_{w,b}(x)=wx+b
+$$
+w, b是 *模型参数* 有时候也叫 *系数* 或 *权重* ，对于线性回归我们要做的就是选择参数w和b的值。
+
+** 代价函数 - Cost Function
+
+那么如何衡量一条直线与训练数据的拟合程度呢？这里我们就要定义一个代价函数 -- 平方差代价函数。(即最小二乘法)
+
+$$J(w,b)=\frac{1}{2m}\sum_{i=1}^{m}\Big(
+\begin{array}
+{c}{{\hat{y}^{(i)}-y^{(i)}\Big)^{2}}} \\
+\end{array}$$
+
+目标是通过不断调整w,b找到最小的J。
+
+
+#+BEGIN_SRC python
+def compute_cost(x, y, w, b): 
+    """
+    Computes the cost function for linear regression.
+    
+    Args:
+      x (ndarray (m,)): Data, m examples 
+      y (ndarray (m,)): target values
+      w,b (scalar)    : model parameters  
+    
+    Returns
+        total_cost (float): The cost of using w,b as the parameters for linear regression
+               to fit the data points in x and y
+    """
+    # number of training examples
+    m = x.shape[0] 
+    
+    cost_sum = 0 
+    for i in range(m): 
+        f_wb = w * x[i] + b   
+        cost = (f_wb - y[i]) ** 2  
+        cost_sum = cost_sum + cost  
+    total_cost = (1 / (2 * m)) * cost_sum  
+
+    return total_cost
+
+#+END_SRC
+
+** 梯度下降
+
+后边的问题就是如何寻找w, b了。
+
+从一些w,b开始。（在线性回归中，初始值是多少不重要，一般都是将他们设置为0）
+
+每次都稍微改变参数w,b，以尝试找到更小的J。
+
+直到希望J稳定在或接近最小值。（有可能存在不止一个可能的最小值）
+
+$$
+\begin{equation}\begin{cases}w=w-\alpha\frac{\partial}{\partial w}J(w,b)\\ b=b-\alpha\frac{\partial}{\partial b}J(w,b)\end{cases}\end{equation}
+$$
+
+$\alpha$ 是学习率(learning rate) 形象点叫步长，这个值取得太小，导致计算太慢；太大可能导致永远达不到最小值。当我们接近局部最小梯度下降时，会采用更小的步长。
+
+$$
+\begin{equation}\begin{cases}w=w-\alpha\frac{1}{m}\sum_{i=1}^{m}(f_{w,b}(x^{(i)})-y^{(i)})x^{(i)}\\ b=b-\alpha\frac{1}{m}\sum_{i=1}^{m}(f_{w,b}(x^{(i)})-y^{(i)})\end{cases}\end{equation}
+$$
+
+#+BEGIN_SRC python
+def gradientDescent(X, y, theta, alpha, iters):
+    temp = np.matrix(np.zeros(theta.shape))
+    parameters = int(theta.ravel().shape[1])
+    cost = np.zeros(iters)
+    
+    for i in range(iters):
+        error = (X * theta.T) - y
+        
+        for j in range(parameters):
+            term = np.multiply(error, X[:,j])
+            temp[0,j] = theta[0,j] - ((alpha / len(X)) * np.sum(term))
+            
+        theta = temp
+        cost[i] = computeCost(X, y, theta)
+        
+    return theta, cost
+#+END_SRC
+
+
+
+** 多元线性回归
+*** 多维度向量化
+特征不止一个维度，可以用向量表示:
+$$
+\vec{x^i} = [{x_{1}}^i, {x_{2}}^i, {x_{3}}^i...{x_{n}}^i]
+$$
+
+$$
+f_{w,b}(\vec{x}) = \vec{w} \cdot \vec{x} + b
+$$
+
+
+$$
+h_{w}\left( x \right)=w^{T}X={w_{0}}+{w_{1}}{x_{1}}+{w_{2}}{x_{2}}+...+{w_{n}}{x_{n}}
+$$
+
+$$
+f_{\vec{w},b}(\vec{x}) = \sum_{j=1}^{n} w_j x_j + b
+$$
+
+#+BEGIN_SRC python
+  w = np.array([1.0, 2.5, -3.31)
+  b = 4
+  x = np.array([10, 20, 30])
+
+  f = 0
+  for j in range (0,n):
+      f = f + w[j] * x[j]
+  f = f + b
+  #等价简化 
+  f = np. dot (w,x) + b
+#+END_SRC
+
+
+与单变量线性回归类似，在多变量线性回归中，我们也构建一个代价函数，则这个代价函数是所有建模误差的平方和，即：
+$$
+J\left( {w_{0}},{w_{1}}...{w_{n},b} \right)=\frac{1}{2m}\sum\limits_{i=1}^{m}{{{\left( h_{w} \left({x}^{\left( i \right)} \right)-{y}^{\left( i \right)} \right)}^{2}}}
+$$
+
+*** 多重线性回归的梯度下降
+
+之前的一些符号概念：
+
+*参数:* $w_1,...w_n, b$
+
+*Model:* 回归方程
+
+*Cost function:*
+$$
+J\left( {w_{0}},{w_{1}}...{w_{n},b} \right)
+$$
+
+*Gradient descent:*
+
+$$
+\begin{aligned} \mathrm{rep} & \mathrm{eat} \\ & w_{j}=w_{j}-\alpha\frac{\partial}{\partial w_{j}}J(w_{1},\cdots,w_{n},b) \\ & b=b-\alpha\frac{\partial}{\partial b}J(w_1,\cdots,w_n,b) \end{aligned}
+$$
+
+*** 特征缩放 (让梯度下降的更快)
+计算平均值，然后归一化处理
+
+检查梯度下降是否收敛：梯度下降的任务是找到参数w和b，希望最小化损失函数。
+
+*** 学习率的选择
+
+
+*** 特征的选择
+
+为算法选择最合适的特征，
+
+* 多项式回归
+
+$$
+f_{\vec{w},b}(x)=w_{1}x+w_{2}x^{2}+w_{3}x^{3}+b
+$$
+
+
+
+* 分类模型
+
+对于分类问题，回答yes no就行。线性回归的就不太好用了，相比之下(sigmoid function)logistic function就挺好用的。 
+
+** 逻辑（logistic）回归 
+(sigmoid function)logistic function:
+$$
+g(z)=\frac{1}{1+e^{-z}}
+$$
+
+$$
+0<g(z)<1
+$$
+
+$$
+f_{\vec{w},b}(\vec{\mathrm{x}})=g(\underbrace{\vec{w}\cdot\vec{\mathrm{x}}+b}_{\vec{z}})=\frac{1}{1+e^{-(\vec{w}\cdot\vec{\mathrm{x}}+b)}}
+$$
+
+*** 决策边界
+
+决策边界就是
+$$
+\vec{z}=\vec{w}\cdot\vec{\mathrm{x}}+b
+$$
+
+非线性的决策边界就可以用多项式回归
+
+*** 逻辑函数的代价函数
+
+平方差函数不是个好的选择因为它使用梯度下降会容易陷入局部最小值。
+
+$$
+L\left(f_{\vec{w},b}\left(\vec{x}^{(i)}\right),y^{(i)}\right)= \begin{cases} -\log\left(f_{\vec{w},b}\left(\vec{x}^{(i)}\right)\right) & \mathrm{if}y^{(i)}=1 \\ -\log\left(1-f_{\vec{w},b}\left(\vec{x}^{(i)}\right)\right) & \mathrm{if}y^{(i)}=0 & \end{cases}
+$$
+
+代价函数的简化版本
+
+$$
+\left.L\left(f_{\overline{w},b}\left(\vec{x}^{(i)}\right),y^{(i)}\right)=-y^{(i)}\mathrm{log}\left(f_{\overline{w},b}\left(\vec{x}^{(i)}\right)\right)-(1-y^{(i)}\right)\mathrm{log}\left(1-f_{\overline{w},b}\left(\vec{x}^{(i)}\right)\right)
+$$
+
+*** 梯度下降的方法跟线性回归的一样
+
+*** 过拟合如何解决
+
+获取更多的数据
+
+**** 正则化
+
+修改损失函数：
+
+$$
+J(\vec{\mathbf{w}},b)=\quad\frac{1}{2m}\sum_{i=1}^{m}\left(f_{\vec{\mathbf{w}},b}\left(\vec{\mathbf{x}}^{(i)}\right)-y^{(i)}\right)^{2}+\frac{\lambda}{2m}\sum_{j=1}^{n}w_{j}^{2}
+$$
+
+**** 正则化线性回归
+
+$$
+\begin{gathered} w_{j}=w_{j}-\alpha\left[\frac{1}{m}\sum_{i=1}^{m}\left[\left(f_{\vec{w},b}\left(\vec{x}^{(i)}\right)-y^{(i)}\right)x_{j}^{(i)}\right]+\frac{\lambda}{m}w_{j}\right] \\ b=b-\alpha\frac{1}{m}\sum_{i=1}^{m}\left(f_{\overrightarrow{w},b}\left(\vec{\mathrm{x}}^{(i)}\right)-y^{(i)}\right) \end{gathered}
+$$
+
+**** 正则化logistic回归
+
+$$
+J(\vec{\mathrm{w}},b)=-\frac{1}{m}\sum_{i=1}^{m}\left[y^{(i)}\mathrm{log}\left(f_{\vec{\mathrm{w}},b}(\vec{\mathrm{x}}^{(i)})\right)+\left(1-y^{(i)}\right)\mathrm{log}\left(1-f_{\vec{\mathrm{w}},b}(\vec{\mathrm{x}}^{(i)})\right)\right]+\frac{\lambda}{2m}\sum_{j=1}^{n}w_{j}^{2}
+$$
+
+
+* 神经网络
+
+中间的都叫隐藏层
+
+选特征（维度）-> 特征会组合成另外的某些特征 -> ... -> 输出
+
+组合过程可用线性拟合模型理解。
+
+** 推理：前向传播
+
+就是从第一层开始顺序计算每一层的w，b
+
+代码实现
+
+#+BEGIN_SRC python
+
+  x = np.array([[200,17]]) #数据矢量化
+  layer1 = Dense(units=3, activation='sigmoid') #构建神经网络的第一个隐藏层，units代表有几个神经元
+  a1 = layer1(x) #a1是张量数据类型，tf内部独有的tf.Tensor([[0.2 0.7 0.311, shape=(1, 3), dtype=float32) , a1.numpy()
+
+  layer2 = Dense(units=1, activation='sigmoid') #构建神经网络的输出层
+  a2 = layer1(a1)
+
+  #更简单的写法
+  layer1 = Dense(units=3, activation='sigmoid')
+  layer2 = Dense(units=1, activation='sigmoid')
+
+  model = Sequential([layer1, layer2])
+
+  x = np.array([[],
+              []])
+  y = np.array([])
+
+  model.compile(...)
+  model.fit(x,y)
+  model.predict(x_new)
+#+END_SRC
+
+单层前向传播
+
+$$
+a^1_{1} = g(\vec{{w^1}_1} \cdot \vec{x} + {b^1}_1)
+$$
+
+layer2 = Dense(units=1, activation='sigmoid')
+
+
+#+BEGIN_SRC python
+
+  model = Sequential([layer1, layer2])
+
+  x = np.array([[],
+              []])
+  y = np.array([])
+
+  model.compile(...)
+  model.fit(x,y)
+  model.predict(x_new)
+
+#+END_SRC
+
+单层前向传播
+
+$$
+{a^1}_{1} = g(\vec{{w^1}_1} \cdot \vec{x} + {b^1}_1)
+$$
+
+$$
+{a^2}_{1} = g(\vec{{w^2}_1} \cdot \vec{x} + {b^2}_1)
+$$
+
+$$
+{a^3}_{1} = g(\vec{{w^3}_1} \cdot \vec{x} + {b^3}_1)
+$$
+
+
+#+BEGIN_SRC python
+  #每个神经元的细节
+  w1_1 = np.array([1,2])
+  b1_1 = np.array([-1])
+  z1_1 = np.dot(w1_1, x) + b1_1
+  a1_1 = sigmoid(z1_1)
+
+  w1_2 = np.array([-3,4])
+  b1_2 = np.array([-1])
+  z1_2 = np.dot(w1_2, x) + b1_2
+  a1_2 = sigmoid(z1_2)
+
+  w1_3 = np.array([5,-6])
+  b1_3 = np.array([-1])
+  z1_3 = np.dot(w1_3, x) + b1_3
+  a1_3 = sigmoid(z1_3)
+#+END_SRC
+
+通用实现：
+
+#+BEGIN_SRC python
+  def dense(a_in, w, b):
+      units = w.shape[1]
+      a_out = np.zeros(units)
+      for j in range(units):
+          w=W［:，j］
+          z = np.dot(w,a_in) + b[j]
+          a_out[j] = g(z)
+      return a_out
+
+  def sequential(x):
+      a1 = dense(x,W1, b1)
+      a2 = dense(a1, W2, b2)
+      a3 = dense (a2, W3, b3)
+      a4 = dense(a3, W4,b4)
+      f_x = a4
+      return f_x
+
+  #矩阵实现
+  def dense(A_in, W,B) :
+      Z = np.matmul(A_in,W) + B
+      A_out = g(Z)
+      return A_out
+
+  ## tf实现神经网络
+  import tensorflow as tf
+  from tensorflow.keras import Sequential
+  from tensorflow.keras.layers import Dense
+  model = Sequential([
+      Dense (units=25, activation='sigmoid'),
+      Dense (units=15, activation='sigmoid'),
+      Dense (units=1, activation='sigmoid'), #激活函数还可以用linear，relu
+  ])
+  from tensorflow.keras.losses import BinaryCrossentropy,
+  model.compile(loss=BinaryCrossentropy()) #设置损失函数还可以用MeanSquaredError()
+  model.fit(X, Y, epochs=100) #迭代次数
+
+#+END_SRC
+
+关于激活函数的选择：对于输出层二分类问题sigmoid最自然的选择，如果Y可以取正值和负值使用线性激活，如果Y只能取正使用relu。隐藏层Relu是最常见的选择。
+
+#+BEGIN_SRC python
+  from tf. keras. layers import Dense
+  model = Sequential([
+      Dense(units=25, activation='relu'),
+      Dense(units=15, activation='relu'),
+      Dense(units=1, activation='sigmoid')
+  ])
+  
+#+END_SRC
+
+* 多类别
+
+** softmax
+
+softmax回归算法是逻辑回归的繁泛化，罗辑回归是一种二分类算法。适用于多种场景。
+
+$$
+\begin{aligned} a_{1} & =\frac{e^{z_{1}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=1|\vec{\mathrm{x}}) \end{aligned}
+$$
+
+$$
+\begin{aligned} a_{2} & =\frac{e^{z_{2}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=2|\vec{\mathrm{x}}) \end{aligned}
+$$
+
+$$
+\begin{aligned} a_{3} & =\frac{e^{z_{3}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=3|\vec{\mathrm{x}}) \end{aligned}
+$$
+
+$$
+\begin{aligned} a_{4} & =\frac{e^{z_{4}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=4|\vec{\mathrm{x}}) \end{aligned}
+$$
+
+损失函数：
+
+逻辑回归的损失函数：
+$$
+loss=-y\log a_1-(1-y)\log(1-a_1)
+$$
+
+softmax的损失函数：
+$$
+loss(a_1,...,a_N,y)= \begin{cases} -\log a_1 & \mathrm{if}y=1 \\ -\log a_2 & \mathrm{if}y=2 \\ \vdots \\ -\log a_N & \mathrm{if}y=N & \end{cases}
+$$
+
+#+BEGIN_SRC python
+  import tensorflow as tf from tensorflow.keras
+  import Sequential
+  from tensorflow. keras. layers import Dense
+
+  model = Sequential([
+      Dense (units=25, activation='relu'),
+      Dense (units=15, activation='relu'),
+      Dense (units=10, activation='softmax')
+  ])
+  from tensorflow. keras.losses import SparseCategoricalCrossentropy
+  model.compile (loss = SparseCategoricalCrossentropy())
+
+#+END_SRC
+
+*** 高级优化
+
+Adam 学习率调整
+
+* 决策树模型
+
+测量纯度：使用熵这个工具
+
+熵的减少即是信息增益，选择按那种方式分割样本很重要，选择信息增益最高的方式分割。
+
+独热编码：如果一个特征有k个取值，那么我们用k个二元特征替换它。这些二院特征总有一个取1，这个便是独热编码。
+
+回归树：
+
+使用多个决策树：
+
+随机森林
+
+何时使用：
+
+决策树和树系综
+
+• 适用于表格 （结构化） 数据
+
+• 不建议用于非结构化数据（图像、音频、文本）
+
+• 快
+
+• 小决策树是人类可解释的
+
+神经网络
+
+• 适用于所有类型的数据，包括表格（结构化）和非结构化数据
+
+• 可能比决策树慢
+
+• 与迁移学习配合使用
+
+• 当构建一个由多个模型协同工作的系统时将多个神经网络连接起来可能更容易，可以使用梯度下降一起训练。
+
+* 聚类(Clustering)
+
+聚类算法会查看一组数据，并自动找出相互关联或相似的数据点
+
+** k-均值聚类算法
+
+*** 算法细节：
+
+第一步随机选择两个点，作为两个不同聚类的中心位置，
+
+将点分配给聚类中心，移动聚类中心：遍历每个点，看看它是更接近哪一个，根据每个点更接近哪个聚类中心来分配这些点。将点分配给聚类中心。移动聚类中心。
+
+然后迭代
+
+*** 损失函数：
+
+$c^{(i)}$ = 分配到某个聚类(1,2,...,k)中的某个$x^{(i)}$索引
+${\mu}_k$ = 聚类k的中心
+${{\mu}_{c}^{(i)}}$ = 被分配的$x^{(i)}$的 $c^{(i)}$聚类中心的位置
+
+损失函数：
+$J\left(c^{(1)},...,c^{(m)},\mu_1,...,\mu_K\right)=\frac{1}{m}\sum_{i=1}^m\|x^{(i)}-\mu_c^{(i)}\|^2$
+
+
+*** k的值
+
+Elbow方法：通过代价函数的变化
+
+
+
+* 深度学习的神经网络
+
+神经网络种类很多：
+
+卷积神经网络(Convolutional neural network) 擅长图像识别
+长短期记忆网络(Long short-term memory network) 擅长语音识别
+
+经典原版的多层感知器MLP("multilayer perceptron"):
+
+以识别图片数字的为例：
+
+输入层每个神经元中都有一个激活值（0-1之间），代表着像素的灰度值
+最后一层的神经元激活值，对应哪个数字的可能性。
+隐藏层暂时认为是一个黑箱（两层的隐藏层，每层16个神经元）。上一层的激活值会决定下一层的激活值。
+识别工作都被拆成小块，
+假设输入层有784（28*28的像素）个神经元，那么隐藏层每个神经元各带784个权重w，每个还带一个偏置b，那么权重和偏置共有784*16+16*16+16*10 + 16+16+10，共13002个。相当于有这些个旋钮开关可控制。我们谈论机器学习的时候就是在讲电脑如何设置这些的数字参数，即找到合适的权重和偏置。
+
+$$
+a_0^{(1)}=\sigma\left(w_{0,0}a_0^{(0)}+w_{0,1}a_1^{(0)}+\cdots+w_{0,n}a_n^{(0)}+b_0\right)
+$$
+
+$$
+\mathbf{a}^{(1)}=\sigma\left(\mathbf{W}\mathbf{a}^{(0)}+\mathbf{b}\right)
+$$
+
+$$
+\boldsymbol{\sigma}\left( \begin{bmatrix} w_{0,0} & w_{0,1} & \ldots & w_{0,n} \\ w_{1,0} & w_{1,1} & \ldots & w_{1,n} \\ \vdots & \vdots & \ddots & \vdots \\ w_{k,0} & w_{k,1} & \ldots & w_{k,n} \end{bmatrix} \begin{bmatrix} a_0^{(0)} \\ a_1^{(0)} \\ \vdots \\ a_n^{(0)} \end{bmatrix}+ \begin{bmatrix} b_0 \\ b_1 \\ \vdots \\ b_k \end{bmatrix}\right)
+$$
+
+Network即是函数
+
+** 激活函数：
+
+线性整流函数Rectified linear unit（ReLU）
+
+Sigmoid
+
+** 梯度下降
+
+损失函数（cost function）:每一项差的平方。
+
+输入： 13002个w，b
+ouput： 1 数字 the cost
+参数：大量的的训练数据
+
+计算梯度的过程就是反向传播,单个训练样本怎样修改权重与偏置，不止说明这个权重该变大还是变小，还包括这些变化的比例是多大，才能更快的降低损失函数。
+* GPT
+
+** Transformer
+
+嵌入向量（embedding vector）:
+维度
+token
+参数
+
+
+** 注意力机制
+
+《Attention Is All You Need》
+
+** 多层感知器
+

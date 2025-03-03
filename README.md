@@ -1,2 +1,2 @@
 # seacho.github.io
-seacho's blog
+seacho's Blogs

@@ -1,0 +1,12 @@
+* Mach IPC
+
+** POSIX IPC
+
+** Mach IPC Concepts
+
+ports(not TCP/UDP ports)：内核对象，类似于file struct。
+port rights：允许你通过一个端口交互的内核对象，（receive，send， send-noce，dead-name）
+port names：与file fd类似，一个int类型的值，标识端口的rights在你的进程内有意义。
+
+lsmp -p 1
+
