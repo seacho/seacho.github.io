@@ -38,6 +38,12 @@ setImmediate (main);
 
 
 #+BEGIN_SRC python
+  docker cp my_container:/usr/lib/x86_64-linux-gnu/libc.so.6 ./
+  docker cp my_container:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 ./
+  
   patchelf --set-interpreter ./libc/ld-linux-x86-64.so.2 --set-rpath ./libc filename
 
 #+END_SRC
+
+
+glibc 的细节：realloc(如果后续块没有被使用不会触发free)
