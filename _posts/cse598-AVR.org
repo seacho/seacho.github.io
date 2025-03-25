@@ -82,6 +82,7 @@ mach_msg_overwrite
 - Same as mach_msg but can specify a recv buffer (name is weird)
 Look at headers in <mach/message.h>
 
+
 *** Important Ports
 
 **** host port
@@ -222,4 +223,15 @@ https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOUserServ
 
 // example of sinks willing to work with `ool_input` (`structureInputDescriptor`)
 https://github.com/search?q=org%3Aapple-oss-distributions%20structureInputDescriptor&type=code
+
+
+
+
+** IOKit
+
+xcodebuild -scheme IOKitPwn -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+这条命令是让它编译的时候让它不要签名。xcode直接编译会出错（证书得花钱的。。。），没找到让它不签名的方法。但是加载就不行了
+
+** PAC
 

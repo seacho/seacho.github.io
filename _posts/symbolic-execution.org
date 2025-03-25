@@ -1,0 +1,91 @@
+
+符号执行：
+
+应用：寻找bug
+
+verifucation：eliminates classes of bugs，
+testing: know bugs
+fuzzers: cookup some unusual case; unknown bugs
+
+symbolic-execution:
+
+bugs: ---  crash 除零，null referce out-of-bound access，app specific。
+
+goals: find deep bugs。
+ideas:
+   ---compute on symbolic values
+   ---create path conditions
+   ---use slover to see if a branch is possible
+
+Ex:
+
+#+BEGIN_SRC
+
+  read x, y;
+  if x > y
+    x= y
+  if x < y
+    x=x+1
+  if x+y=7
+    error
+   
+  runtime components
+  
+  遇到一个条件语句fork一次
+  
+  应用：BPF的check部分
+
+  
+  
+#+END_SRC
+
+solver(求解器): z3
+
+klee，angr，s2e，triton
+ 
+
+** Triton
+
+
+** angr
+
+ipython-accessible
+powerful analyses
+wersatile
+well-encapsulated
+open and expandable
+architecture "independent":x86, amd64, mips, mips64, arm, aarch64, ppc, ppc64
+
+功能模块
+binary loader
+static analysis routines:
+  control-flow Graph
+  Data-flow Analysis
+  Value-Set analysis
+Symbolic Execution Engine
+
+question: How do I trigger path X or condition Y?
+
+  Dynamic analysis
+    Input A? NO. Input B? No.Input C? ...
+    Based on concrete Inputs to application
+
+    
+  (Concrete) Static analysis
+    You can't / you might be able to
+    Based on various static techniques
+
+  Now:
+  1.Interpret the application
+  2.Track contraints on variables
+  3.when the required condition is trigger, "concretize" to obtain a possible input
+
+
+  GirlScout，BoyScout
+
+
+  Application:
+
+    rop.gadgets()
+    cdc:Cyber Grand Challenge
+    

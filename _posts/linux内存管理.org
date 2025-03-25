@@ -382,15 +382,140 @@ init_mem_mapping()=
 
 ** 物理内存管理（伙伴系统）
 
+#+BEGIN_SRC C
+
+  pg_data_t
+    └── node_zones
+        ├── ZONE_DMA
+        │   └── zone_mem_map
+        │       ├── struct page
+        │       ├── struct page
+        │       └── struct page
+        ├── ZONE_NORMAL
+        │   └── zone_mem_map
+        │       ├── struct page
+        │       ├── struct page
+        │       └── struct page
+        └── ZONE_HIGHMEM
+            └── zone_mem_map
+                ├── struct page
+                ├── struct page
+                └── struct page
+
+#+END_SRC
+
+
+
 *** 基本概念：
 
-node（节点）：这个概念跟内存控制器（MC）有关，如果系统中的CPU很多，为了简化内存资源的分配以及提高利用效率，CPU设计会有多个内存控制器，共用相同内存控制器的CPU组为一个node。分为UMA和NUMA架构，前者只有一个节点，只有一个内存控制器，后者将分为多个节点，每个节点有一个内存控制器。（为了降低认知负载，我们就只讨论UMA架构的）
 
-zone（区）：节点之下便是zone，zone代表的是内存的用途，把内存划分区域管理，不同用途的内存页属于不同的zone。对应结构体[zone](https://elixir.bootlin.com/linux/v6.6/source/include/linux/mmzone.h#L810)
+**** node（节点）
 
-page（页）：物理页，对应一个[page](https://elixir.bootlin.com/linux/v6.6/source/include/linux/mm_types.h#L74)结构体
+这个概念跟内存控制器（MC）有关，如果系统中的CPU很多，为了简化内存资源的分配以及提高利用效率，CPU设计会有多个内存控制器，共用相同内存控制器的CPU组为一个node。分为UMA和NUMA架构，前者只有一个节点，只有一个内存控制器，后者将分为多个节点，每个节点有一个内存控制器。（为了降低认知负载，我们就只讨论UMA架构的）。对应结构体[pglist_data](https://elixir.bootlin.com/linux/v6.6/source/include/linux/mmzone.h#L1261)
 
-*** 
+全局变量[node_data](https://elixir.bootlin.com/linux/v6.6/source/arch/x86/mm/numa.c#L25)来保存各个node的信息。
+
+结构体中 =node_zones= 作为一个 zone 结构体数组，记录了本节点上所有的 zone，其中可用的 zone 的个数由节点结构体的 =nr_zones= 字段限制。
+
+=node_zonelists= ：内存分配时备用 zone 的搜索顺序
+
+=node_start_pfn= ：node 的起始页框标号
+
+=node_present_pages= ：node 中物理页的总数量
+
+=unsigned long node_spanned_pages= ： node 中物理页的总大小
+
+=node_id= ：node 的标号
+
+在 =/mm/page_alloc.c= 中定义了一个全局数组 [node_states ](https://elixir.bootlin.com/linux/v6.6/source/mm/page_alloc.c#L191)用以标识对应标号的节点的状态，结构体中的 [nodemask_t](https://elixir.bootlin.com/linux/v6.6/source/include/linux/nodemask.h#L99) 类型为一个位图类型，定义于  =/include/linux/nodemask.h= 中
+。这个状态由一个枚举类型 [node_states](https://elixir.bootlin.com/linux/v6.6/source/include/linux/nodemask.h#L398) 定义，该枚举类型定义于 /include/linux/nodemask.h
+使用这个命令来查看系统中的节点信息： =numactl --hardware=
+
+
+
+**** zone（区）
+
+节点之下便是zone，zone代表的是内存的用途，把内存划分区域管理，不同用途的内存页属于不同的zone。对应结构体[zone](https://elixir.bootlin.com/linux/v6.6/source/include/linux/mmzone.h#L810)
+
+zone的类型：
+
+1. ​ZONE_DMA
+
+​用途：专供DMA（直接内存访问）设备使用。这类设备无法通过CPU的虚拟地址直接访问内存，因此需要物理地址连续的页面。
+​物理内存范围：通常为0~16MB（具体范围可能因架构和内核配置而异）。例如，在IA32架构中，ZONE_DMA固定管理前16MB内存。
+​适用场景：如旧式网卡、磁盘控制器等仅支持DMA且寻址能力有限的硬件。
+
+2. ​ZONE_DMA32
+
+​用途：扩展的DMA区域，支持32位地址总线的DMA设备访问更大的内存范围（如4GB以内）。
+​物理内存范围：0~4GB，需内核启用CONFIG_ZONE_DMA32配置。例如，在ARM64平台中，若内存总量≤4GB，则所有内存可能被划入此区域。
+​与ZONE_DMA的区别：ZONE_DMA32允许更大范围的物理地址，适用于现代DMA设备。
+
+3. ​ZONE_NORMAL
+
+​用途：常规内存区域，供内核和进程直接映射使用。此区域的物理地址可通过内核的线性映射直接访问，无需特殊处理。
+​物理内存范围：在IA32架构中为16MB~896MB，而在ARM64等64位架构中可能覆盖4GB以上的内存（需内核配置支持）。
+​重要性：大多数内核数据结构和用户进程的匿名页（如堆、栈）分配于此区域。
+
+4. ​ZONE_HIGHMEM
+
+​用途：管理高端内存（物理地址超过内核线性映射范围的区域）。此类页面需通过动态映射（如kmap）才能被内核临时访问。
+​物理内存范围：在32位系统中通常为896MB~4GB。64位系统因虚拟地址空间充足，一般不启用此区域。
+​适用性：主要用于32位系统的大内存支持，例如处理用户空间的大型文件映射。
+
+5. 其他可选Zone类型
+
+​ZONE_MOVABLE:用于可迁移的页面，支持内存热插拔或减少内存碎片。此类页面可通过迁移调整物理位置。
+
+​ZONE_DEVICE:专为持久化内存设备（如NVDIMM）设计，支持设备内存的特殊访问模式
+
+
+重要的字段：
+
+=_watermark= ：“水位线”
+
+每一个 zone 都有着其对应的三档“水位线”： WMARK_MIN、WMARK_LOW、WMARK_HIGH，存放在 _watermark 数组中，在进行内存分配时，分配器（例如 buddy system）会根据当前 zone 中空余内存所处在的“水位线”来判断当前的内存状况，如下图所示：
+
+=lowmem_reserve= ：zone 自身的保留内存
+
+在进行内存分配时，若当前的 zone 没有足够的内存了，则会向下一个 zone 索要内存，那么这就存在一个问题：来自 higher zones 的内存分配请求可能耗尽 lower zones 的内存，但这样分配的内存未必是可释放的（freeable），亦或者/且最终不一定会被释放，这有可能导致 lower zones 的内存提前耗尽，而 higher zones 却仍保留有大量的内存。为了避免这样的一种情况的发生，lowmem_reserve 字段用以声明为该 zone 保留的内存，这一块内存别的 zone 是不能动的。
+
+=node= ：这个字段只在 NUMA 系统中被启用，用以标识该 zone 所属的 node
+
+=zone_pgdat= ：标识zone 所属的 pglist_data 节点
+
+=zone_start_pfn= ：zone 的起始物理页帧编号
+
+=spanned_pages= ： zone 对应的内存区域中的 pages 总数
+
+=present_pages= ： zone 中存在的物理页框数
+
+=managed_pages= ：zone 中 buddy system 管理的页面数量
+
+=free_area= ：buddy system 按照 order 管理的页面，介绍伙伴算法的时候会再次讨论
+
+
+
+
+**** page（页）
+
+一个物理页，对应一个[page](https://elixir.bootlin.com/linux/v6.6/source/include/linux/mm_types.h#L74)结构体
+
+
+在 page 结构体中专门有着一个匿名结构体用于存放与 slab 相关的成员
+
+=flags= ：标志位
+
+即该页的标志位成员，用以表示该页所处在的状态，每一个位表示一种状态，故一张页可以有 32 种不同的状态，这些状态定义于 [include/linux/page-flags.h](https://elixir.bootlin.com/linux/v6.6/source/include/linux/page-flags.h#L100) 中。
+
+
+
+
+
+
+*** buddy system
+
+
 
 
 
