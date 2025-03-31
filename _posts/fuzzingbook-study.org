@@ -1,4 +1,4 @@
-#+TITLE: fuzzingbook-study
+#+TITLE: fuzzingbook阅读笔记
 #+DATE: 2025-03-24
 #+JEKYLL_LAYOUT: post
 #+JEKYLL_CATEGORIES: PWN,linux
@@ -18,6 +18,8 @@ cgi_decode.c.gcov
 
 In the .gcov file, each line is prefixed with the number of times it was called (- stands for a non-executable line, ##### stands for zero) as well as the line number. We can take a look at cgi_decode(), for instance, and see that the only code not executed yet is the return -1 for an illegal input.
 
+#+BEGIN_SRC python
+
 def read_gcov_coverage(c_file):
     gcov_file = c_file + ".gcov"
     coverage = set()
@@ -34,7 +36,7 @@ def read_gcov_coverage(c_file):
 
 coverage = read_gcov_coverage('cgi_decode.c')    
 
-** mutate fuzzing
+#+END_SRC
 
 
 
