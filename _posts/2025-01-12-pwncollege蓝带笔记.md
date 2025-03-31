@@ -468,11 +468,11 @@ The generalization of Return-to-libc is Return Oriented Programming.
 
 The safe thing to do would be to:
 
-1. mmap(PROT_READ|PROT_WRITE)
-2. write the code
-3. mprotect(PROT_READ|PROT_EXEC)
-4. execute
-5. mprotect(PROT_READ|PROT_WRITE)
+1. `mmap(PROT_READ|PROT_WRITE)`
+2. `write the code`
+3. `mprotect(PROT_READ|PROT_EXEC)`
+4. `execute`
+5. `mprotect(PROT_READ|PROT_WRITE)`
 6. update code
 7. etc...
 
@@ -655,7 +655,7 @@ free由于cache有很多种，所以比较复杂。
 3. 不能再检查fastbin是否满足
 4. 不能放入fastbin，检查M标志是否被设置，如果是的话，直接munmap掉（不知道为啥检查两次）
 5. 清理合并fastbins
-6. 放到unsorted bin中
+6. 放到unsorted bin中，并后向合并
 
 ### tcache(glibc-2.26引入)
 

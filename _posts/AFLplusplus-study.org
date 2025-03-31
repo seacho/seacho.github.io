@@ -1,0 +1,108 @@
+AFLplusplus原理与AFL一样，但是AFLplusplus将代码结构给改了下，使用面向对象的设计，大大增强了代码可读性和扩展性。可以很方便的自定义一些扩展。（实话来讲，AFL代码真的是一坨。。。AFLplusplus代码优雅了很多，起码全局变量不见了。）
+
+
+**  AFLplusplus custom mutator
+
+[custom mutator](https://aflplus.plus/docs/custom_mutators/)
+
+afl-fuzz.c中的 =main= 会调用afl-fuzz-mutators.c中 =setup_custom_mutators= 函数，然后它再去调用 =load_custom_mutator=
+函数使用 =dlopen和dlsym= 加载动态链接库，并且找到 =afl_custom_init= 和 =afl_custom_fuzz= =afl_custom_mutator= 函数。该动态链接库是通过环境变量传进去的，比如： ~export AFL_CUSTOM_MUTATOR_LIBRARY="full/path/to/mutator_first.so;full/path/to/mutator_second.so"~ 。该custom mutator的fuzz函数会在afl-fuzz-one.c中的 =fuzz_one_original= 被调用来变异样本。
+关于 =afl_custom_fuzz= 函数的定义如下：
+
+
+#+BEGIN_SRC C
+  /**
+   ,* Perform custom mutations on a given input
+   ,*
+   ,* (Optional)
+   ,*
+   ,* Getting an add_buf can be skipped by using afl_custom_splice_optout().
+   ,*
+   ,* @param[in] data Pointer returned in afl_custom_init by this custom mutator
+   ,* @param[in] buf Pointer to the input data to be mutated and the mutated
+   ,*     output
+   ,* @param[in] buf_size Size of the input/output data
+   ,* @param[out] out_buf The new buffer, under your memory mgmt.
+   ,* @param[in] add_buf Buffer containing an additional test case (splicing)
+   ,* @param[in] add_buf_size Size of the additional test case
+   ,* @param[in] max_size Maximum size of the mutated output. The mutation must
+   ,* not produce data larger than max_size.
+   ,* @return Size of the mutated output.
+   ,*/
+  size_t (*afl_custom_fuzz)(void *data, u8 *buf, size_t buf_size, u8 **out_buf,
+                            u8 *add_buf, size_t add_buf_size, size_t max_size);
+
+
+    /**
+   ,* A post-processing function to use right before AFL writes the test case to
+   ,* disk in order to execute the target.
+   ,*
+   ,* NOTE: Do not do any random changes to the data in this function!
+   ,*
+   ,* PERFORMANCE: If you can modify the data in-place you will have a better
+   ,*              performance. Modify *data and set `*out_buf = data`.
+   ,*
+   ,* (Optional) If this functionality is not needed, simply do not define this
+   ,* function.
+   ,*
+   ,* @param[in] data pointer returned in afl_custom_init by this custom mutator
+   ,* @param[in] buf Buffer containing the test case to be executed
+   ,* @param[in] buf_size Size of the test case
+   ,* @param[out] out_buf Pointer to the buffer storing the test case after
+   ,*     processing. The external library should allocate memory for out_buf.
+   ,*     It can chose to alter buf in-place, if the space is large enough.
+   ,* @return Size of the output buffer.
+   ,*/
+  size_t (*afl_custom_post_process)(void *data, u8 *buf, size_t buf_size,
+                                    u8 **out_buf);
+  /**
+   ,* A post-processing function to use right before AFL writes the test case to
+   ,* disk in order to execute the target.
+   ,*
+   ,* NOTE: Do not do any random changes to the data in this function!
+   ,*
+   ,* PERFORMANCE: If you can modify the data in-place you will have a better
+   ,*              performance. Modify *data and set `*out_buf = data`.
+   ,*
+   ,* (Optional) If this functionality is not needed, simply do not define this
+   ,* function.
+   ,*
+   ,* @param[in] data pointer returned in afl_custom_init by this custom mutator
+   ,* @param[in] buf Buffer containing the test case to be executed
+   ,* @param[in] buf_size Size of the test case
+   ,* @param[out] out_buf Pointer to the buffer storing the test case after
+   ,*     processing. The external library should allocate memory for out_buf.
+   ,*     It can chose to alter buf in-place, if the space is large enough.
+   ,* @return Size of the output buffer.
+   ,*/
+  size_t (*afl_custom_post_process)(void *data, u8 *buf, size_t buf_size,
+                                    u8 **out_buf);
+  
+#+END_SRC
+
+使用时的注意点：
+
+1. 释放前一次分配的内存saved_buf,并分配一块新内存new_buf
+2. 调用LLVMFuzzerCustomMutator对buf进行变异并将数据写入new_buf里
+3. 保存new_buf地址到 *out_buf和saved_buf里，用做返回给fuzz使用和避免内存泄露
+4. 禁用trim =export AFL_DISABLE_TRIM=1= 
+
+afl_custom_post_process的使用是在afl-fuzz-run.c中的 =write_to_testcase= 中。
+
+
+flank sky
+
+JaanusKaapPublic
+
+anheng office fuzz
+
+hitb trapfuzz
+
+JS 引擎：
+
+fuzzilli
+
+JIT Picker: compare the results under runtime and JIT, if they don't match then it can mean that there may be a bug with the type analysis
+
+
+

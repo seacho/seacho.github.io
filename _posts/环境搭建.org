@@ -38,11 +38,16 @@ setImmediate (main);
 
 
 #+BEGIN_SRC python
-  docker cp my_container:/usr/lib/x86_64-linux-gnu/libc.so.6 ./
-  docker cp my_container:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 ./
-  
-  patchelf --set-interpreter ./libc/ld-linux-x86-64.so.2 --set-rpath ./libc filename
+  #use Dockerfile
+  docker build -t pwn .
+  docker run -d --name pwn -p 1337:1337 -it pwn
 
+  #contain_name:pwn
+  docker cp pwn:/usr/lib/x86_64-linux-gnu/libc.so.6 ./
+  docker cp pwn:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 ./
+    
+  patchelf --set-interpreter ./libc/ld-linux-x86-64.so.2 --set-rpath ./libc filename
+  
 #+END_SRC
 
 

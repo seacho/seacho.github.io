@@ -1,0 +1,22 @@
+
+** llvm analysis pass
+
+#+BEGIN_SRC C++
+
+  class ModulePass{
+      bool runOnModule(Module &M) = 0;
+  };
+
+  class MyModulePass : public MoudlePass{
+      bool runOnModule(Module &M) {for (iter ...)};//bool value identify whether I had modify this module.
+  };
+#+END_SRC
+
+** llvm transform pass
+
+
+Instruction, BasicBlock, BasicBlockUtils
+
+** llvm pass manager
+
+

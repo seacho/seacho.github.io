@@ -31,4 +31,8 @@ d8 --print-ast poc.js
 
 object.h
 
-object：v8自己创建类，由自身来维护，不使用c++的机制，也就是说不会自动调用构造析构函数，由，直接通过AllocateRaw函数在v8的heap上分配一块内存。
+object：v8自己创建类，由自身来维护，不使用c++的机制，也就是说不会自动调用构造析构函数，直接通过AllocateRaw函数在v8的heap上分配一块内存。
+
+
+
+

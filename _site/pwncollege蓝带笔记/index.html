@@ -613,38 +613,11 @@ ROPecker：一种通用且实用的防御 ROP 攻击的方法</p>
 <p>The safe thing to do would be to:</p>
 
 <ol>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td>mmap(PROT_READ</td>
-          <td>PROT_WRITE)</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
-  <li>write the code</li>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td>mprotect(PROT_READ</td>
-          <td>PROT_EXEC)</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
-  <li>execute</li>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td>mprotect(PROT_READ</td>
-          <td>PROT_WRITE)</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
+  <li><code class="language-plaintext highlighter-rouge">mmap(PROT_READ|PROT_WRITE)</code></li>
+  <li><code class="language-plaintext highlighter-rouge">write the code</code></li>
+  <li><code class="language-plaintext highlighter-rouge">mprotect(PROT_READ|PROT_EXEC)</code></li>
+  <li><code class="language-plaintext highlighter-rouge">execute</code></li>
+  <li><code class="language-plaintext highlighter-rouge">mprotect(PROT_READ|PROT_WRITE)</code></li>
   <li>update code</li>
   <li>etc…</li>
 </ol>
@@ -856,7 +829,7 @@ What if we jump to the 0x31 via another vulnerability?
   <li>不能再检查fastbin是否满足</li>
   <li>不能放入fastbin，检查M标志是否被设置，如果是的话，直接munmap掉（不知道为啥检查两次）</li>
   <li>清理合并fastbins</li>
-  <li>放到unsorted bin中</li>
+  <li>放到unsorted bin中，并后向合并</li>
 </ol>
 
 <h3 id="tcacheglibc-226引入">tcache(glibc-2.26引入)</h3>
