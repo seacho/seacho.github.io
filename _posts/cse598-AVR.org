@@ -1,0 +1,242 @@
+#+TITLE: 
+#+DATE: 2025-03-05
+#+JEKYLL_LAYOUT: post
+#+JEKYLL_CATEGORIES: PWN
+#+JEKYLL_TAGS: PWN
+
+
+
+** Mach IPC
+
+*** POSIX IPC
+
+*** Mach IPC Concepts
+
+**** port
+
+ports(not TCP/UDP ports)：内核对象，类似于file struct。
+port rights：允许你通过一个端口交互的内核对象，（receive，send， send-noce，dead-name）
+send
+ - Can send messages to the port
+ - 0 or more
+ - Transitive (can be cloned and sent)
+send-once
+ - Can send one message to the port
+ - 0 or more
+receive
+ - Can receive messages sent to the port
+ - 1
+ - 可以认为是该端口的所有者
+dead-name
+ - 表示端口已死（接收进程死亡或被释放）
+
+port names：与file fd类似，一个int类型的值，标识端口的rights在你的进程内有意义。
+
+=lsmp -p 1= 这个命令可以查看pid=1的进程的端口信息。
+
+Passing Port Rights
+- You can pass port rights in a message!
+- When sending a message, you can attach port rights
+
+这个逻辑有点绕，举个例子：A现在已经有了一个 =SEND(B)= 的权限，然后创建了一个port A，它需要通过 =SEND(B)= 端口把 =SEND(A)= 的权限发送给B，B使用 =RECEIVE(B)= 权限接收，然后B就有了SEND(A)的权限。
+
+
+Bootstrapping:
+1. Bob creates port B and has =RECEIVE(B)= right
+2. Bob sends =SEND(B)= to bootstrap server
+3. Alice creates a new port, called A
+4. Alice asks bootstrap server for Bob's(com.bob) port, gets =SEND(B)=
+5. Alice sends right =SEND(A)= to port B using =SEND(B)=
+6. Bob uses =RECEIVE(B)= right to receive message, and also has =SEND(A)= right
+
+Registered Bootstrapping
+1. Alice creates a new port, called A 
+2. Alice asks bootstrap server for Bob's (com.bob) port
+3. Bootstrap looks for port for /bin/bob, otherwise runs it, creates B and has =RECEIVE(B)=
+4. Bob checks in with bootstrap server
+5. Bootstrap keeps =SEND(B)= , sends Bob =RECEIVE(B)=
+6. Bob gets =RECEIVE(B)= from bootstrap
+7. Bootstrap sends =SEND(B)= to Alice
+8. Alice sends right =SEND(A)= to port B using =SEND(B)=
+9. Bob uses =RECEIVE(B)= right to receive message, and also has =SEND(A)= right
+
+**** Messages
+
+*Type of Messages*
+
+- Header
+- Body
+- Trailer (user can't set)
+
+复杂的消息：
+- sending port rights；
+- 共享内存的share，move，copy
+
+（userspace部分的源码中有详细结构，在<mach/message.h>中的mach_msg_*_descriptor*）
+
+
+*Sending and Receiving Messages*
+
+mach_msg
+mach_msg_overwrite
+- Same as mach_msg but can specify a recv buffer (name is weird)
+Look at headers in <mach/message.h>
+
+
+*** Important Ports
+
+**** host port
+
+Access to host-level information and diagnostics
+
+mach_host_self()
+<mach/mach_host.h>
+ - host_ info
+ - host_kernel_version
+
+Access to other ports
+ - IO Master port,
+ - Clock port
+ - Processor Set port
+
+**** host_priv port
+
+host privileged port with security-sensitive operations
+
+host_get_host_priv_port()
+
+<mach/host_priv.h>
+
+ - host_reboot
+ - vm_wire 
+ _ host_set_exception_ports
+
+only for root
+
+**** host special ports
+
+Fixed number ports (Don't need bootstrap)
+
+<mach/host_special_ports.h>
+
+first seven are reserved for kernel, rest are used by system daemons
+
+**** tasks and processes
+
+Mach just has concept of threads and tasks
+
+BSD layer means mapping BSD process to Mach task
+
+- porc: bsd/sys/proc_internal.h
+- task: osfmk/kernl/task.h
+- uthread: bsd/sys/user.h
+- thread: osfmk/kernl/thread.h
+
+task_for_pid
+pid_for_task
+
+
+**** task ports
+
+Used to control the specific task
+mach_task_self()
+<mach/task.h>
+task_terminate
+task_suspend
+taread_create
+
+Access to many other important task_specific ports
+
+Allow remote manipulation of task if you obtain a SEND right
+
+**** task ports for VM access
+
+Virtual Memory access/modification requires a task port
+
+<mach/mach_vm.h>
+mach_vm_write
+mach_vm_read
+
+Can inject new threads, new memory, new tasks, etc...
+
+**** A special task port
+kernel_task is a special task port represents the kernel
+
+If you can obtain a SEND right to it, you can read/write kernel memory
+
+Protected by SIP and other security mechanisms
+
+**** Thread Ports
+
+Ports to control/modify threads
+<mach/thread_act.h>
+thread_terminate
+thread_suspend
+thread_set_exception_ports
+
+**** Processor Set Ports
+
+host
+
+
+**** Exception Ports
+
+恢复进程运行使用mach_msg的方式，
+通过mach_set_states的方式并不能真的修改线程的寄存器，虽然返回成功。
+vm_protect的方式不能去更改目标进程的代码段的内存页的权限。
+代码段的内存也不能write，但是read没问题。write栈上的空间没问题。
+但是可以通过create new thread 去执行新的代码
+
+
+
+** XNU memory Allocation
+
+Slab Allocators
+
+useful tool: zprint
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<@689149233424498708> regarding your question where the switch between inband and ool input occurs ([here](https://www.twitch.tv/videos/2271992570?t=1h51m53s) and [here](https://www.twitch.tv/videos/2271992570?t=2h7m28s))
+it is done on the user mode counter part of IOKit here:
+
+// User-mode deciding which mechanism to use
+https://github.com/apple-oss-distributions/IOKitUser/blob/main/IOKitLib.c#L1841-L1848
+
+// Kernel-mode verifies this (again) - that ool size makes sense
+// and later prepares `args.structureInputDescriptor`
+https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOUserClient.cpp#L5035
+
+// client -> server
+https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOUserServer.cpp#L6238
+
+// example of sinks willing to work with `ool_input` (`structureInputDescriptor`)
+https://github.com/search?q=org%3Aapple-oss-distributions%20structureInputDescriptor&type=code
+
+
+
+
+** IOKit
+
+xcodebuild -scheme IOKitPwn -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+这条命令是让它编译的时候让它不要签名。xcode直接编译会出错（证书得花钱的。。。），没找到让它不签名的方法。但是加载就不行了
+
+使用 IOConnectCallMethod 来调用内核方法的时候要注意，声明的参数的传递。
+
+内核通过externalMethod接口与用户层交互。
+
+
+** PAC
+

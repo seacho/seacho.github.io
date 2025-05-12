@@ -1,0 +1,325 @@
+<!DOCTYPE html> <html lang="en-US"> <head prefix="og: http://ogp.me/ns#"> <meta charset="UTF-8" /> <meta http-equiv="X-UA-Compatible" content="ie=edge" /> <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <meta name="mobile-web-app-capable" content="yes" /> <meta name="apple-mobile-web-app-capable" content="yes" /> <meta name="application-name" content="seacho's blog" /> <meta name="apple-mobile-web-app-status-bar-style" content="#fff" /> <meta name="apple-mobile-web-app-title" content="seacho's blog" /> <title> Linux内存管理 - seacho's blog </title> <link rel="alternate" href="http://localhost:4000/linux%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" hreflang="en-US" /> <link rel="canonical" href="http://localhost:4000/linux%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" /> <meta name="description" content="分享砍柴细节。" /> <meta name="referrer" content="no-referrer-when-downgrade" /> <meta property="fb:app_id" content="" /> <meta property="og:site_name" content="Linux内存管理 | 樵夫砍柴手札" /> <meta property="og:title" content="Linux内存管理 | 樵夫砍柴手札" /> <meta property="og:type" content="website" /> <meta property="og:url" content="http://localhost:4000/linux%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" /> <meta property="og:description" content="分享砍柴细节。" /> <meta property="og:image" content="" /> <meta property="og:image:width" content="640" /> <meta property="og:image:height" content="640" /> <meta name="twitter:card" content="summary" /> <meta name="twitter:title" content="Linux内存管理 | " /> <meta name="twitter:url" content="http://localhost:4000/linux%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" /> <meta name="twitter:site" content="@" /> <meta name="twitter:creator" content="@" /> <meta name="twitter:description" content="分享砍柴细节。" /> <meta name="twitter:image" content="" /> <link type="application/atom+xml" rel="alternate" href="http://localhost:4000/feed.xml" title="seacho&apos;s blog" /> <link rel="apple-touch-icon" sizes="180x180" href="/assets/favicons/apple-touch-icon.png" /> <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicons/favicon-32x32.png" /> <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicons/favicon-16x16.png" /> <link rel="manifest" href="/assets/favicons/site.webmanifest" /> <link rel="mask-icon" href="/assets/favicons/safari-pinned-tab.svg" color="#5bbad5" /> <meta name="apple-mobile-web-app-title" content="Jekyll Klise" /> <meta name="application-name" content="Jekyll Klise" /> <meta name="msapplication-TileColor" content="#da532c" /> <meta name="theme-color" content="#2c2c2c" /> <link rel="stylesheet" href="/assets/css/style.css" /> <!-- for mathjax support --> </head> <body data-theme="dark" class="notransition"> <script> const body = document.body; const data = body.getAttribute("data-theme"); const initTheme = (state) => { if (state === "dark") { body.setAttribute("data-theme", "dark"); } else if (state === "light") { body.removeAttribute("data-theme"); } else { localStorage.setItem("theme", data); } }; initTheme(localStorage.getItem("theme")); setTimeout(() => body.classList.remove("notransition"), 75); </script> <div class="navbar" role="navigation"> <nav class="menu"> <input type="checkbox" id="menu-trigger" class="menu-trigger" /> <label for="menu-trigger"> <span class="menu-icon"> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512" > <path d="M64,384H448V341.33H64Zm0-106.67H448V234.67H64ZM64,128v42.67H448V128Z" /> </svg> </span> </label> <a id="mode"> <svg class="mode-sunny" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512" > <title>LIGHT</title> <line x1="256" y1="48" x2="256" y2="96" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="256" y1="416" x2="256" y2="464" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="403.08" y1="108.92" x2="369.14" y2="142.86" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="142.86" y1="369.14" x2="108.92" y2="403.08" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="464" y1="256" x2="416" y2="256" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="96" y1="256" x2="48" y2="256" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="403.08" y1="403.08" x2="369.14" y2="369.14" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="142.86" y1="142.86" x2="108.92" y2="108.92" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <circle cx="256" cy="256" r="80" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> </svg> <svg class="mode-moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512" > <title>DARK</title> <line x1="256" y1="48" x2="256" y2="96" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="256" y1="416" x2="256" y2="464" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="403.08" y1="108.92" x2="369.14" y2="142.86" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="142.86" y1="369.14" x2="108.92" y2="403.08" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="464" y1="256" x2="416" y2="256" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="96" y1="256" x2="48" y2="256" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="403.08" y1="403.08" x2="369.14" y2="369.14" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <line x1="142.86" y1="142.86" x2="108.92" y2="108.92" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> <circle cx="256" cy="256" r="80" style="stroke-linecap:round;stroke-miterlimit:10;stroke-width:32px" /> </svg> </a> <div class="trigger"> <div class="trigger-container"><a class="menu-link" href="/">home</a><a class="menu-link" href="/archive/">archive</a><a class="menu-link" href="/about/">about</a><a class="menu-link rss" href="/feed.xml"> <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 512 512" fill="#ED812E" > <title>RSS</title> <path d="M108.56,342.78a60.34,60.34,0,1,0,60.56,60.44A60.63,60.63,0,0,0,108.56,342.78Z" /> <path d="M48,186.67v86.55c52,0,101.94,15.39,138.67,52.11s52,86.56,52,138.67h86.66C325.33,312.44,199.67,186.67,48,186.67Z" /> <path d="M48,48v86.56c185.25,0,329.22,144.08,329.22,329.44H464C464,234.66,277.67,48,48,48Z" /> </svg> </a> </div> </div> </nav> </div> <div class="wrapper post"> <main class="page-content" aria-label="Content"> <article itemscope itemtype="https://schema.org/BlogPosting"> <header class="header"> <div class="tags"> <span itemprop="keywords"> <a class="tag" href="/tags/#pwn-linux">PWN,LINUX</a> </span> </div> <h1 class="header-title" itemprop="headline">Linux内存管理</h1> <div class="post-meta"> <time datetime="2025-03-15T00:00:00+08:00" itemprop="datePublished"> Mar 15, 2025 </time> <span itemprop="author" itemscope itemtype="https://schema.org/Person"> <span itemprop="name">樵夫砍柴手札</span> </span> <time hidden datetime="" itemprop="dateModified"> Mar 15, 2025 </time> <span hidden itemprop="publisher" itemtype="Person">樵夫砍柴手札</span> <span hidden itemprop="image"></span> <span hidden itemprop="mainEntityOfPage"><p>本篇文章详细介绍linux内核的内存管理，主要分为两部分，介绍伙伴算法和slab分配器-SLUB的工作机制，重点放在后面部分。</p> </span> </div> </header> <div class="page-content" itemprop="articleBody"> <p>本篇文章详细介绍linux内核的内存管理，主要分为两部分，介绍伙伴算法和slab分配器-SLUB的工作机制，重点放在后面部分。</p> <p>我们说的内存管理器是指 <code class="language-plaintext highlighter-rouge">page allocator</code> 与 <code class="language-plaintext highlighter-rouge">slab allocator</code> ：</p> <p>page allocator: 负责管理整个系统的物理内存的分配，linux的page分配器基于伙伴系统buddy system</p> <p>slab allocator: 负责堆内存分配，有很多种，我们主要谈论SLUB的实现。</p> <p>我们可以通过 <code class="language-plaintext highlighter-rouge">cat /proc/buddyinfo</code> 与 <code class="language-plaintext highlighter-rouge">cat /proc/pagetypeinfo</code> 查看页面相关信息：</p> <h2 id="cpu的分页机制"> <a href="#cpu的分页机制" class="anchor-head"></a> CPU的分页机制 </h2> <p>一切的一切从CPU的分页机制谈起…</p> <p>由于物理内存管理使用页表结构会根据芯片架构的不同而有所不同，这里以x86-64架构为例来介绍：</p> <h3 id="virtual-memory-layout"> <a href="#virtual-memory-layout" class="anchor-head"></a> Virtual memory layout </h3> <p>[Kernel address space]<a href="https://www.kernel.org/doc/Documentation/x86/x86_64/mm.txt">https://www.kernel.org/doc/Documentation/x86/x86_64/mm.txt</a></p> <p>cpu有一个CR3寄存器存放第一级页表（PGD）的物理地址。页表中的每一个表项(后面简称entry)必须要4KB大小对齐。 每一个page table entry 都是一个 <code class="language-plaintext highlighter-rouge">unsigned long(uint64_t)(declared as pxxval_t)</code> 类型的值，通过将这些类型中的每一个封装在一个结构体中，可以强制执行一些makeshift类型安全比如 <code class="language-plaintext highlighter-rouge">typedef struct { pgdval_t pgd; } pgd_t</code> 。PageTable的结构依赖于Intel 5-level paging是否开启，检查方式在<a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/kernel/head64.c#L105">check_la57_support()</a>。</p> <p>虚拟地址空间是由 <a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/include/asm/page_types.h#L14">__VIRTUAL_MASK</a>和<a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/include/asm/page_64_types.h#L57">__VIRTUAL_MASK_SHIFT</a>决定的。</p> <p><code class="language-plaintext highlighter-rouge">#define __VIRTUAL_MASK ((1UL &lt;&lt; __VIRTUAL_MASK_SHIFT) - 1)</code></p> <p><code class="language-plaintext highlighter-rouge">#define __VIRTUAL_MASK_SHIFT (pgtable_l5_enabled() ? 56 : 47)</code></p> <table> <thead> <tr> <th>Level</th> <th>Count</th> <th>Shift</th> <th>Description</th> </tr> </thead> <tbody> <tr> <td>PGD</td> <td>[PTRS_PER_PGD][6] (512)</td> <td>[PGDIR_SHIFT][13] (48 or 39)</td> <td>Page Global Directory</td> </tr> <tr> <td>P4D</td> <td>[PTRS_PER_P4D][7] (512 or 1)</td> <td>[P4D_SHIFT][14] (39)</td> <td>Page 4 Directory()</td> </tr> <tr> <td>PUD</td> <td>[PTRS_PER_PUD][10] (512)</td> <td>[PUD_SHIFT][14] (30)</td> <td>Page Upper Directory</td> </tr> <tr> <td>PMD</td> <td>[PTRS_PER_PMD][11] (512)</td> <td>[PMD_SHIFT][15] (21)</td> <td>Page Middle Directory</td> </tr> <tr> <td>PTE</td> <td>[PTRS_PER_PTE][12] (512)</td> <td>[PAGE_SHIFT][16] (12)</td> <td>Page Table Entry directory</td> </tr> </tbody> </table> <p>以下是分别在4级5级页表结构中虚拟地址的各个位在寻址时代表在各级目录表项的索引。</p> <p>在 4 级页表的 x86-64 架构中，虚拟地址空间为 48 位。</p><pre><code class="language-C">
+
+                                    48 bits
+&lt;--------------&gt;&lt;----------------------------------------------&gt;
+   6         5         4         3         2         1
+---|---------|---------|---------|---------|---------|----------
+3210987654321098765432109876543210987654321098765432109876543210
+                [  PGD  ][  PUD  ][  PMD  ][  PTE  ][  OFFSET  ]
+111111111111111111111111111111111111111111100000000|000000000000  PMD_MASK
+111111111111111111111111111111111100000000|00000000|000000000000  PUD_MASK
+111111111111111111111111100000000|00000000|00000000|000000000000  PGDIR_MASK
+                        |        |        |        |
+                        |        |        |        |
+                        |        |        |        |------------- PAGE_SHIFT  (12)
+                        |        |        |---------------------- PMD_SHIFT   (21)
+                        |        |------------------------------- PUD_SHIFT   (30)
+                        |---------------------------------------- PGDIR_SHIFT (39)
+</code></pre><p><code class="language-plaintext highlighter-rouge">512 * 1 * 512 * 512 * 512 = 68.7bn 4KiB pages = 256 TiB</code> ，四级页表模式可以寻址空间在256TB</p> <p>地址空间排布</p><pre><code class="language-C">Userland (128 TiB)
+                        0000000000000000 -&gt; |---------------| ^
+                                            |    Process    | |
+                                            |    address    | | 128 TiB
+                                            |     space     | |
+                        0000800000000000 -&gt; |---------------| v
+                     .        ` .     -                 `-       ./   _
+                              _    .`   -   The netherworld of  `/   `
+                    -     `  _        |  /      unavailable sign-extended -/ .
+                     ` -        .   `  48-bit address space  -     \  /    -
+                   \-                - . . . .             \      /       -
+Kernel (128 TiB)
+                        ffff800000000000 -&gt; |----------------| ^
+                                            |   Hypervisor   | |
+                                            |    reserved    | | 8 TiB
+                                            |      space     | |
+                        ffff880000000000 -&gt; |----------------| x
+                                            | LDT remap for  | | 0.5 TiB
+                                            |       PTI      | |
+[kaslr]   PAGE_OFFSET = ffff888000000000 -&gt; |----------------| x
+                                            | Direct mapping | |
+                                            |  of all phys.  | | 64 TiB
+                                            |     memory     | |
+                        ffffc88000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+[kaslr] VMALLOC_START = ffffc90000000000 -&gt; |----------------| ^
+                                            |    vmalloc/    | |
+                                            |    ioremap     | | 32 TiB
+                                            |     space      | |
+      VMALLOC_END + 1 = ffffe90000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+[kaslr] VMEMMAP_START = ffffea0000000000 -&gt; |----------------| ^
+                                            |     Virtual    | |
+                                            |   memory map   | | 1 TiB
+                                            |  (struct page  | |
+                                            |     array)     | |
+                        ffffeb0000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+                        ffffec0000000000 -&gt; |----------------| ^
+                                            |  KASAN shadow  | | 16 TiB
+                                            |     memory     | |
+                        fffffc0000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+                        fffffe0000000000 -&gt; |----------------| ^
+                                            | cpu_entry_area | | 0.5 TiB
+                                            |     mapping    | |
+                        fffffe8000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+     ESPFIX_BASE_ADDR = ffffff0000000000 -&gt; |----------------| ^
+                                            |   %esp fixup   | | 0.5 TiB
+                                            |     stacks     | |
+                        ffffff8000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+           EFI_VA_END = ffffffef00000000 -&gt; |----------------| ^
+                                            |   EFI region   | | 64 GiB
+                                            | mapping space  | |
+         EFI_VA_START = ffffffff00000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+   __START_KERNEL_map = ffffffff80000000 -&gt; |----------------| ^
+                                            |     Kernel     | |
+                                            |      text      | | KERNEL_IMAGE_SIZE = 1 GiB *
+                                            |     mapping    | |
+        MODULES_VADDR = ffffffffc0000000 -&gt; |----------------| x *
+                                            |     Module     | |
+                                            |    mapping     | | 1 GiB *
+                                            |     space      | |
+                        ffffffffff600000 -&gt; |----------------| x
+                                            |   vsyscalls    | | 8 MiB
+                        ffffffffffe00000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+                                            ------------------
+
+
+</code></pre><p>在 5 级页表的 x86-64 架构中，虚拟地址空间扩展到了 57 位。</p><pre><code class="language-C">
+
+                               57 bits
+&lt;-----&gt;&lt;-------------------------------------------------------&gt;
+   6         5         4         3         2         1
+---|---------|---------|---------|---------|---------|----------
+3210987654321098765432109876543210987654321098765432109876543210
+       [  PGD  ][  P4D  ][  PUD  ][  PMD  ][  PTE  ][  OFFSET  ]
+111111111111111111111111111111111111111111100000000|000000000000  PMD_MASK
+111111111111111111111111111111111100000000|00000000|000000000000  PUD_MASK
+111111111111111111111111100000000|00000000|00000000|000000000000  P4D_MASK
+111111111111111100000000|00000000|00000000|00000000|000000000000  PGDIR_MASK
+               |        |        |        |        |
+               |        |        |        |        |------------- PAGE_SHIFT  (12)
+               |        |        |        |---------------------- PMD_SHIFT   (21)
+               |        |        |------------------------------- PUD_SHIFT   (30)
+               |        |---------------------------------------- P4D_SHIFT   (39)
+               |------------------------------------------------- PGDIR_SHIFT (48)
+
+</code></pre><p><code class="language-plaintext highlighter-rouge">512 * 512 * 512 * 512 * 512` = 35.2tn 4KiB pages = 128 PiB</code> ，五级页表模式可以寻址空间在128PB</p><pre><code class="language-C">Userland (64 PiB)
+                        0000000000000000 -&gt; |---------------| ^
+                                            |    Process    | |
+                                            |    address    | | 64 PiB
+                                            |     space     | |
+                        0100000000000000 -&gt; |---------------| v
+                     .        ` .     -                 `-       ./   _
+                              _    .`   -   The netherworld of  `/   `
+                    -     `  _        |  /      unavailable sign-extended -/ .
+                     ` -        .   `  57-bit address space  -     \  /    -
+                   \-                - . . . .             \      /       -
+Kernel (64 PiB)
+                        ff00000000000000 -&gt; |----------------| ^
+                                            |   Hypervisor   | |
+                                            |    reserved    | | 4 PiB
+                                            |      space     | |
+                        ff10000000000000 -&gt; |----------------| x
+                                            | LDT remap for  | | 0.25 PiB
+                                            |       PTI      | |
+[kaslr]   PAGE_OFFSET = ff11000000000000 -&gt; |----------------| x
+                                            | Direct mapping | |
+                                            |  of all phys.  | | 32 PiB
+                                            |     memory     | |
+                        ff91000000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+[kaslr] VMALLOC_START = ffa0000000000000 -&gt; |----------------| ^
+                                            |    vmalloc/    | |
+                                            |    ioremap     | | 12.5 PiB
+                                            |     space      | |
+      VMALLOC_END + 1 = ffd2000000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+[kaslr] VMEMMAP_START = ffd4000000000000 -&gt; |----------------| ^
+                                            |     Virtual    | |
+                                            |   memory map   | | 0.5 PiB
+                                            |  (struct page  | |
+                                            |     array)     | |
+                        ffd6000000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+                        ffdf000000000000 -&gt; |----------------| ^
+                                            |  KASAN shadow  | | 8 PiB
+                                            |     memory     | |
+                        fffffc0000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+                        fffffe0000000000 -&gt; |----------------| ^
+                                            | cpu_entry_area | | 0.5 TiB
+                                            |     mapping    | |
+                        fffffe8000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+     ESPFIX_BASE_ADDR = ffffff0000000000 -&gt; |----------------| ^
+                                            |   %esp fixup   | | 0.5 TiB
+                                            |     stacks     | |
+                        ffffff8000000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+           EFI_VA_END = ffffffef00000000 -&gt; |----------------| ^
+                                            |   EFI region   | | 64 GiB
+                                            | mapping space  | |
+         EFI_VA_START = ffffffff00000000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+   __START_KERNEL_map = ffffffff80000000 -&gt; |----------------| ^
+                                            |     Kernel     | |
+                                            |      text      | | KERNEL_IMAGE_SIZE = 1 GiB *
+                                            |     mapping    | |
+        MODULES_VADDR = ffffffffc0000000 -&gt; |----------------| x *
+                                            |     Module     | |
+                                            |    mapping     | | 1 GiB *
+                                            |     space      | |
+                        ffffffffff600000 -&gt; |----------------| x
+                                            |   vsyscalls    | | 8 MiB
+                        ffffffffffe00000 -&gt; |----------------| v
+                                            /                /
+                                            \     unused     \
+                                            /      hole      /
+                                            \                \
+                                            ------------------
+
+</code></pre><p>这几个图引自《linux-mm-notes》系列文章（链接忘了，在github上，搜一搜应该能找到）</p> <p>注：如果PUD被标记为huge（1 GiB页面大小），则跳过PMD和PTE目录条目，直接通过PUD表项完成地址转换（并且将PUD视为PTE）；如果PMD被标记为huge（2 MiB页面大小），则跳过PTE目录条目，直接通过PMD表项完成地址转换。</p> <p>至于每个页目录表项中的条目的每个flag位就更复杂了，此处略。</p> <h3 id="linux中物理地址pa与虚拟地址va的转换"> <a href="#linux中物理地址pa与虚拟地址va的转换" class="anchor-head"></a> linux中物理地址PA与虚拟地址VA的转换 </h3> <ol> <li> <p>PA to VA:<a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/include/asm/page.h#L58">__va()</a></p> </li> <li> <p>VA to PA:<a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/include/asm/page.h#L41">__pa()</a></p> <p>我们只能转换部分直接映射的虚拟地址（ZONE_DMA和ZONE_NORMAL），即通过kmalloc()或__get_free_pages()分配的内存，其余的（比如用户空间的地址；内核高端内存（ZONE_HIGHMEM）、vmalloc区域或设备映射地址（需使用kmap()或ioremap()））都要通过页表去寻址。</p> <p>内核解压的关键步骤：</p><pre><code class="language-C">    
+extract_kernel()
+├── choose_random_location()  // 随机选择phys_base
+├── handle_relocations()       // 调整虚拟地址偏移
+└── __startup_64()            // 验证物理/虚拟偏移一致性，__startup_64()中，通过比较physaddr参数与_text的实际物理地址计算load_delta
+    
+</code></pre><pre><code class="language-C">    
+#define __pa(x)     __phys_addr((unsigned long)(x))
+    
+#define __phys_addr(x)      __phys_addr_nodebug(x)
+    
+static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
+{
+        unsigned long y = x - __START_KERNEL_map;
+    
+        /* use the carry flag to determine if x was &lt; __START_KERNEL_map */
+        x = y + ((x &gt; y) ? phys_base : (__START_KERNEL_map - PAGE_OFFSET));
+    
+        return x;
+}
+    
+</code></pre><p>__START_KERNEL_map是Linux内核中定义的一个关键宏，表示内核镜像的起始虚拟地址。（如x86_64中通常为0xffffffff80000000），从虚拟地址中减去__START_KERNEL_map，得到相对偏移量y。</p> <p>通过比较x与y的关系（即x &gt; y是否成立）（即进位标志判断），确定虚拟地址是否位于内核直接映射区域（__START_KERNEL_map以上的地址）。</p> <p>若虚拟地址在直接映射区（x &gt; y），则加上phys_base（物理内存的基址）。若在非直接映射区（如内核镜像区），则使用__START_KERNEL_map - PAGE_OFFSET作为修正偏移量</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/kernel/head64.c#L317">phys_base</a>表示从<a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/Kconfig#L2065">CONFIG_PHYSICAL_START</a>开始的物理偏移，如果内核已被重新定位，则内核text段映射进物理内存将从该偏移开始（在x86-64架构中默认值为0，但在启用KASLR时会被动态调整）。</p> <p>CONFIG_PHYSICAL_START是内核编译时预设的物理基地址，默认值为0x1000000（16MB）。这是内核镜像在链接阶段期望加载text段的物理起始地址。</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/arch/x86/kernel/head64.c#L203">load_delta</a>CONFIG_PHYSICAL_START与实际加载text段的地址（phys_base）之间的差值，计算公式为：</p><pre><code class="language-C"> /*
+  * Compute the delta between the address I am compiled to run at
+  * and the address I am actually running at.
+  */
+load_delta = physaddr - (unsigned long)(_text - __START_KERNEL_map);
+</code></pre></li> </ol> <h3 id="直接物理内存映射"> <a href="#直接物理内存映射" class="anchor-head"></a> 直接物理内存映射 </h3> <p>物理内存是直接整个被映射进内核虚拟内存空间的，可以看上面讨论四级五级页表的内存空间排布的图。因此任何内核代码都可以访问物理内存的任何部分。</p> <p>在初始化的时候就完成的。 <code class="language-plaintext highlighter-rouge">start_kernel() -&gt; setup_arch() -&gt; init_mem_mapping()</code></p> <h2 id="物理内存管理伙伴系统"> <a href="#物理内存管理伙伴系统" class="anchor-head"></a> 物理内存管理（伙伴系统） </h2> <p>TODO…</p> <h2 id="slub-internals"> <a href="#slub-internals" class="anchor-head"></a> SLUB Internals </h2> <p>本篇文章这部分是学习内核堆利用时的视频笔记，视频源链接在最后。</p> <h3 id="基本概念"> <a href="#基本概念" class="anchor-head"></a> 基本概念： </h3> <p>Slab分配器：是用来管理内核堆内存的基础设施 目前linux内核提供三种主流的实现：SLOB，SLAB，SLUB，这三种提供相同的接口供外部使用。其中SLUB是linux默认启用的，也可以在编译前通过修改编译配置文件，换成其他两种。</p> <p>objects：slab可以分配出去小内存区域。</p> <p>slabs：是保存objects的大内存区域，其上区域被切分成大小相同的内存区域称为object slots。这片内存是通过page_alloc分配的。</p> <p>slot：是Slab分配器中预定义的 ​固定大小的内存块区间。</p> <p>（slot和objects其实指代的东西相同，因为它们在内存上是重叠的，但是只是在不同场合他们的称呼不一样。区分不开问题也不大，理解工作流程即可。）</p> <h3 id="slab-bugs"> <a href="#slab-bugs" class="anchor-head"></a> Slab bugs </h3> <p>典型的动态内存bugs：</p> <ul> <li> <p>Out-of-bounds(OOB)越界读写</p> </li> <li> <p>Use-after-free(UAF)</p> </li> <li> <p>Double-free，invalid-free</p> </li> </ul> <p>攻击方式：</p> <p>利用上述bug，可以达到overwrite和泄漏的目的。 因为free的object slot中存在元数据，我们可以通过覆盖链表的next指针，控制下一次的分配对象，获得任意地址读写，可以提权或者泄漏内核地址。堆上的内容也可能包含函数指针，我们可以控制它达成任意代码执行或者泄漏内核地址。具体的攻击措施还要看特定的漏洞详情。</p> <h3 id="内核堆上的防护措施"> <a href="#内核堆上的防护措施" class="anchor-head"></a> 内核堆上的防护措施： </h3> <p>下一个free slot的指针被保存在free slot的中间附近，这样可以防止小范围的溢出破坏指针</p><pre><code class="language-C">
+cache-&gt;offset = ALIGN_DOWN(cache-&gt;object_size / 2, sizeof(void *));
+freeptr_addr = (unsigned long)object + cache-&gt;offset;
+
+</code></pre><p>通过一个 <code class="language-plaintext highlighter-rouge">CONFIG_SLAB_FREELIST_HARDENED=y</code> 的编译配置选项，freelist指针会被加密保存。</p><pre><code class="language-C">
+cache-&gt;random = get_random_long();
+
+freelist_ptr = (void *)((unsigned long)ptr ^  cache-&gt;random ^ swab(ptr_addr));
+// ptr — actual value of freelist pointer
+// ptr_addr — location where freelist pointer is stored
+// swab() — exchanges adjacent even and odd bytes
+
+</code></pre><p>ptr是freelist pointer的值，ptr_addr是freelist pointer被保存的地址，swab交换奇偶byte字节序。</p> <p>所以要利用只能先泄漏 <code class="language-plaintext highlighter-rouge">cache-&gt;random</code> 和 =ptr_addr=，让利用更加困难。大多数现代 Slab 漏洞利用的是覆盖对象或者通过跨分配器攻击覆盖其他类型的内存。</p> <p>通过 <code class="language-plaintext highlighter-rouge">CONFIG_SLAB_FREELIST_RANDOM=y</code> 配置，当分配新的 slab 时，SLUB 会打乱空闲列表中对象的顺序，这样让分配的地址更难预测。</p> <h3 id="slab关键数据结构"> <a href="#slab关键数据结构" class="anchor-head"></a> slab关键数据结构 </h3> <ol> <li> <p>struct kmem_cache</p><pre><code class="language-C">    
+struct kmem_cache {
+    // Per-CPU cache data:
+    struct kmem_cache_cpu __percpu *cpu_slab;
+    // Per-node cache data:
+    struct kmem_cache_node *node[MAX_NUMNODES];
+    ...
+    const char *name; // Cache name
+    slab_flags_t flags; // Cache flags
+    unsigned int object_size; // Size of objects
+    unsigned int offset; // Freelist pointer offset
+    unsigned long min_partial;
+    unsigned int cpu_partial_slabs;
+};
+    
+</code></pre><p>比较关键的几个成员变量：</p> <p>name: 内核有许多不同的caches，可以通过 <code class="language-plaintext highlighter-rouge">cat /proc/slabinfo</code> 查看其中name就是第一列的名字，该name通过kmem_cache_create的参数指定</p> <p>object_size: 也是通过kmem_cache_create的参数指定，每一个cache只可以分配固定大小的内存。</p> <p>cpu_slab: SLUB分配器为每个CPU核心分配独立的kmem_cache_cpu结构，保存系统内特定cpu绑定的slab信息，目的是避免多核并发访问时的锁竞争。每个核心通过自己的kmem_cache_cpu直接从本地缓存分配内存对象。其内的slabs是绑定到特定CPU上的slab。在6.8版本以前也被称为froze slabs，当CPU分配内存的时候，首先会从这些slabs中分配。</p> <p>node：是为每个NUMA节点保存slab信息。NUMA的核心思想是把CPU分组，来简化资源的分配的复杂性。相当于拥有一个全局的slabs列表，尚未绑定到任何CPU，但是也仍然属于cache，也会包含已经分配的objects。</p> <p>结构体详情：</p><pre><code class="language-C">    
+struct kmem_cache_cpu {
+    struct slab *slab;    // Active slab
+    struct slab *partial; // Partial slabs
+    ...
+};
+struct kmem_cache_node {
+    struct list_head partial; // Slabs
+    ...
+};
+    
+</code></pre></li> <li> <p>per-CPU</p> <p>对于 <code class="language-plaintext highlighter-rouge">struct slab</code> 的简化信息：</p><pre><code class="language-C">  struct slab {  // Aliased with struct page
+      struct kmem_cache *slab_cache; // Cache this slab belongs to
+      struct slab *next; // Next slab in per-cpu list
+      int slabs; // Slabs left in per-cpu list
+      struct list_head slab_list; // List links in per-node list
+      void *freelist; // Per-slab freelist
+      ...
+};
+    
+</code></pre><p>slab是一个 struct slab 的结构体，上述是简化的版本，struct slab 别名为struct page，提到这就不得不提一下历史了，在Linux内核5.17版本中，struct slab被引入，目的是将slab相关的字段从struct page中分离出来。struct page（每一个物理页面都有一个相应的page对应）之前包含了很多不同用途的字段，使用union来适应不同场景，导致结构复杂。现在struct slab作为struct page的一个overlay，共享同一块内存，但隐藏了struct page的细节，这样slab分配器只需要处理自己的结构。</p> <p>slab_cache指向自己属于的cache。</p> <p>每一个slab都有后备内存，后备内存是通过page_alloc想buddy system分配。不需要指针指向它，struct slab本身就是一个struct page</p> <p>包含object slots，<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L4137">size</a>是基于objects大小计算出来的。</p> <p>freelist指针指向第一个slab中free的slot，下一个free slot的指针被保存在free slot中。freelist最后一个指针是NULL，objects都是从链表头分配，free也是插入链表头。</p> <p>full slabs是指没有free slot的slab，此时它的freelist 指针是NULL。</p> <p>多个slab可以用链表结构串联在一起。per-CPU的是单链表， <code class="language-plaintext highlighter-rouge">struct slab</code> 中的 <code class="language-plaintext highlighter-rouge">next</code> 指针，per-node的是双链表， <code class="language-plaintext highlighter-rouge">struct slab</code> 中的 <code class="language-plaintext highlighter-rouge">list_head slab_list</code> 。</p> </li> <li> <p>active slab</p> <p>先来看下kmem_cache_cpu的active slab，per-CPU的slabs的其中之一被设计成激活的，并把slab成员指针赋值为该slab。分配object的时候会首先从这个slab中分配。</p> <p>active slab有两个freelists。 <code class="language-plaintext highlighter-rouge">kmem_cache_cpu-&gt;freelist</code> 和 <code class="language-plaintext highlighter-rouge">kmem_cache_cpu-&gt;slab-&gt;freelist</code> 都指向它的slots。但是两个链表并不相交， <code class="language-plaintext highlighter-rouge">kmem_cache_cpu-&gt;freelist</code> 用来给绑定的CPU分配释放内存的。</p> <p><code class="language-plaintext highlighter-rouge">kmem_cache_cpu-&gt;slab-&gt;freelist</code> 被用来给其他CPUs分配释放内存的（这个模块的代码有可能不只在一个cpu上运行，可能会在任务切换过程中跑到其他cpu上执行了）。</p> </li> <li> <p>partial slabs</p> <p>partial意思是这些slab有空闲slot（至少有一个，也有可能是fully free）。</p> <p>每个partial slabs都有后备内存。</p> <p>只有一个freelist，</p> <p>只在active slab变为full后被使用。</p> <p>per-CPU partial slabs的列表最大数量是有限的，这个大小是由kmem_cache-&gt;cpu_partial_slabs字段指定，这个值是根据object和slab的大小计算出来的<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L4364">link</a> 用户空间是无法查看这个字段值的，只能查看 <code class="language-plaintext highlighter-rouge">/sys/kernel/slab/$CACHE/cpu_partial</code> ，然后自己计算出cpu_partial_slabs。</p> </li> <li> <p>per-node</p> <p>kmem_cache_node 有一个per-node partial slabs的列表。这就意味这每一个都至少有一个free slots。</p> <p>每一个都有后备内存和一个freelist。</p> <p>一旦per-CPU中的slabs都用完都变成full后他们就会被使用。</p> <p>per-node slabs 的最小数量也是有限制的。由kmem_cache-&gt;min_partial指定， 计算也是基于object的大小<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L4543">link</a></p> <p>可以在用户空间中查看 <code class="language-plaintext highlighter-rouge">/sys/kernel/slab/$CACHE/min_partial</code></p> </li> <li> <p>full slabs</p> <p>full slabs 不会被tracked。没有指针指向full slabs（除非开启slub_debug），一旦任意一个object被释放到full slab中，分配器会获得指向该slab的指针。我们只需使用<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slab.h#L211">virt_to_slab</a>计算。</p> </li> </ol> <h3 id="分配过程"> <a href="#分配过程" class="anchor-head"></a> 分配过程 </h3> <p>为了方便介绍，这里分为五个不同层次的分配过程</p> <ol> <li> <ol> <li>allocating from lockless per-CPU freelist kmem_cache_cpu-&gt;freelist</li> </ol> <p>当无锁的该cpu slab的freelist是不为空，那么就会分配该freelist的第一个object</p> <p>如果为空，goto 2。</p> </li> <li> <ol> <li>allocating from active slab (kmem_cache_cpu-&gt;slab-&gt;freelist)</li> </ol> <p>如果active slab freelist不是空的，</p> <p>首先move active slab freelist到 lockless per-CPU freelist；<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3151">link</a></p> <p>然后从这个lockless的per-CPU freelist分配第一个object。<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3176">link</a>并更新这个freelist<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3173">link</a></p> <p>如果这个active slab freelist为空。 goto 3<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3158">link</a></p> </li> <li> <ol> <li>allocating from per-CPU partial slabs (kmem_cache_cpu-&gt;partial)</li> </ol> <p>如果有per-CPU的partial slabs：</p> <p>首先将链表中的第一个脱链，并指定为active slabs <a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3206">link</a></p> <p>goto 2<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3210">link</a></p> <p>如果per-CPU的partial slabs是空的</p> <p>goto 4<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3213">link</a></p> </li> <li> <ol> <li>allocating from per-node partial slabs (kmem_cache_node-&gt;partial)</li> </ol> <p>如果有per-node的partial slabs： 首先将链表中的第一个脱链，并指定为active slabs<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2309">link</a>；然后移动一些(最多cpu_partial_slabs / 2<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2319">link</a>)per-node的slabs到per-CPU的partial list<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2313">link</a>；再去active slab重新分配。<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3220">link</a></p> <p>如果per-node partial list 为空，goto 5</p> </li> <li> <ol> <li>Create new slab</li> </ol> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3223">allocate</a> from new slab的过程：</p> <p>首先从page_alloc中分配新的slab，并放进freelist中，并指定为active slab，然后从该slab中分配对象。</p> </li> </ol> <h3 id="explotion-case"> <a href="#explotion-case" class="anchor-head"></a> explotion case </h3> <ol> <li> <p>Out-of-bounds, case #1 (Shaping Slab memory)</p> <p>攻击所需条件：</p> <ol> <li>需要一个内核bug能导致OOB；</li> <li>有两个不同的系统调用，一个可以分配object(IOCTL_ALLOC)，一个可以OOB(IOCTL_OOB)；</li> <li>能够leak或者overwrite的目标object；</li> <li>能将可利用的object和targetobject挨着放在一起。</li> </ol> <p>攻击过程：</p> <ol> <li> <p>allocate 足够的targt objects 来获取新的active slab；需要填充所有的holes达到分配过程的第五步。</p> <p>所以我们就需要找到有多少个holes。 但是在非特权的目标系统上，没有方法能够找到确切的数目。 <code class="language-plaintext highlighter-rouge">/proc/slabinfo</code> 和相关文件对于普通用户不可读。</p> <p>而且我们可能拥有的空闲插槽数量没有上限，原因是atcive slab上的holes数量最多有每一个slab上的objects的数目。 per-CPU partials的holes数量上限是每一个slab上的objects的数目 x cpu_partial_slabs。 per-node partials的没有限制slabs的数量。</p> </li> </ol> </li> </ol> <p>所以一种方式是估计，首先重现目标环境，运行相同的版本内核，运行相同的软件，然后我们通过 <code class="language-plaintext highlighter-rouge">cat /proc/slabinfo</code> 看有多少个holes。</p> <p>还有一种<a href="https://stefangast.eu/papers/slubstick.pdf">基于时间信道</a>的方式。</p> <table> <thead> <tr> <th>name</th> <th>&lt;active_objs&gt;</th> <th>&lt;num_objs&gt;</th> <th><objsize></objsize></th> <th><objperslab></objperslab></th> <th><pagesperslab></pagesperslab></th> </tr> </thead> <tbody> <tr> <td>cred_jar</td> <td>7644</td> <td>7644</td> <td>192</td> <td>21</td> <td>1</td> </tr> <tr> <td>kmalloc-8k</td> <td>456</td> <td>460</td> <td>8192</td> <td>4</td> <td>8</td> </tr> <tr> <td>kmalloc-4k</td> <td>3118</td> <td>3160</td> <td>4096</td> <td>8</td> <td>8</td> </tr> <tr> <td>kmalloc-2k</td> <td>3621</td> <td>3696</td> <td>2048</td> <td>16</td> <td>8</td> </tr> <tr> <td>kmalloc-32</td> <td>54789</td> <td>55808</td> <td>32</td> <td>128</td> <td>1</td> </tr> </tbody> </table> <p>active_objs: 已经分配的objects的数量， num_objs: 现存slab中的slots的总数。 这个值不是实时更新的，只有在一个slab被分配，释放或者移动到per-node partial list时才会更新。</p> <p>Shrink cache 可以获得更准确的值，</p> <p><code class="language-plaintext highlighter-rouge">echo 1 | sudo tee /sys/kernel/slab/kmalloc-32/shrink</code></p> <p>但是这样会导致这个cache释放fully free slabs。</p> <table> <thead> <tr> <th># name</th> <th>&lt;active_objs&gt;</th> <th>&lt;num_objs&gt;</th> </tr> </thead> <tbody> <tr> <td>kmalloc-32</td> <td>25216</td> <td>25216 // Before shrinking.</td> </tr> <tr> <td>kmalloc-32</td> <td>23132</td> <td>24320 // After shrinking.</td> </tr> </tbody> </table> <p>比如这个就少了1000多个，这个就是不准确的，即是我们复制来环境也不准确。</p> <ol> <li> <p>现在假设我们分配了足够的target objects并获得了一个新的active slab。并且新的active slab被target objects填充一部分；</p> </li> <li> <p>现在通过IOCTL_ALLOC操作分配一个vulnerable object； 现在分配足够的target objects填满active slab。现在slab变成full，尽管可能会变成非active，但是没关系。</p> <p>现在内存看起来是这样：</p><pre><code class="language-C">+-------+-------+-------+-------+-------+-------+-------+-------+
+| Target| Target| Target| Vuln  | Target| Target| Target| Target|
++-------+-------+-------+-------+-------+-------+-------+-------+
+    
+</code></pre></li> <li> <p>现在通过IOCTL_OOB触发越界访问。</p> </li> </ol><pre><code class="language-C">+-------+-------+-------+-------+-------+-------+-------+-------+
+| Target| Target| Target| Vuln  | Target| Target| Target| Target|
++-------+-------+-------+-------+-------+-------+-------+-------+
+                            |_______| OOB
+</code></pre><p>（注：如果没有第一步，我们就无法破坏target，并且可能会破坏内核其他数据，后果不可控。所以第一步是为了explition的稳定。 除此之外这个exp也有一些问题，比如: 如果vuln被allocated到最后一个object，这就有概率会失败。解决的办法就是在其后多分配一个slab，然后填充target。 Migration: 进程被移动到另一个CPU上执行了。解决办法：绑定CPU的亲和性 Preempting: 另一个进程或者中断处理来抢占此CPU，解决方法：减少slab shaping的时间；使用less noisy（不那么频繁） 的cache。）</p> <ol> <li> <p>Out-of-bounds, case #2 （Shaping Slab memory）</p> <p>需要条件：分配vulnerable objects并且立即写数据触发OOB（IOCTL_ALLOC_AND_OOB），</p> <p>攻击过程：</p> <ol> <li> <p>分配足够多的target objects以获得新的 active slab；</p> </li> <li> <p>分配一个vulnerable object并且触发OOB通过IOCTL_ALLOC_AND_OOB，</p> <p>这有两种情况， case #1: OOB访问的区域在free slot中，如果OOB的范围很小，没有覆盖元数据，则不会发生任何事情。可以重复进行OOB操作。</p><pre><code class="language-C">+-------+-------+-------+-------+-------+-------+-------+-------+
+| Target|       | Target| Vuln  |       | Target| Target| Target|
++-------+-------+-------+-------+-------+-------+-------+-------+
+                            |_______| OOB
+</code></pre></li> </ol> </li> </ol> <p>case #2: OOB访问的区域在target object中</p> <p>Success！！！ 但是也许需要很多次重试才能成功</p><pre><code class="language-C">+-------+-------+-------+-------+-------+-------+-------+-------+
+| Target|       | Target| Vuln  | Target| Target| Target| Target|
++-------+-------+-------+-------+-------+-------+-------+-------+
+                            |_______| OOB
+</code></pre><h3 id="freeing-process-and-explition"> <a href="#freeing-process-and-explition" class="anchor-head"></a> Freeing process and explition </h3> <ol> <li> <p>case #1: object 属于active slab，</p> <p>object加入无锁的per-CPU的freelist的头部。<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3766">link</a></p> <p>想象一种场景:</p><pre><code class="language-C">void *ptr1 = kmalloc(128, GFP_KERNEL);
+free(ptr1);
+void *ptr2 = kmalloc(128, GFP_KERNEL);
+free(ptr2);
+void *ptr3 = kmalloc(128, GFP_KERNEL);
+    
+</code></pre><p>ptr1，ptr2，ptr3都指向同一个object。</p> <p>所以这就引出第一种利用场景(UAF)</p> <p>所需条件：假设我们有UAF的漏洞：</p> <ol> <li> <p>分配vulnerable object （IOCTL_ALLOC）</p> </li> <li> <p>free vulnerable object （IOCTL_FREE）</p> </li> <li> <p>在IOCTL_FREE后，读写vulnerable object的数据，（IOCTL_UAF）</p> </li> </ol> <p>攻击过程：</p> <ol> <li> <p>通过IOCTL_ALLOC分配一个vulnerable object，</p> </li> <li> <p>通过IOCTL_FREE free vulnerable object，悬空引用仍然存在；</p> </li> <li> <p>分配一个target object，现在那个悬空指针指向它；</p> </li> <li> <p>现在能够使用IOCTL_UAF触发UAF访问。</p> </li> </ol> </li> <li> <p>case #2: object属于一个non-full slab</p> <p>free object到所属的freelist之中。<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3661">link</a></p> <p>如果slab是per-node的，并且变成了fully free，并且node有足够的per-node slabs。该slab会被从per-node中移除并<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3687">free</a>回page allocator中。</p> <p>如果object属于non-full non-current-active slab：<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3661">free</a>object 到slab freelist中可能会[free] (<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3687">https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3687</a>)per-node的full slab，但是<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3666">不适用于</a>per-CPU partial或者active slabs（即使变成full free也不会free回page_alloca，仍然待在相应列表中）</p> <p>如果object属于另一个CPU的active slab，将会把它放到active slab的freelist（不是per-CPU的freelist）中<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3661">link</a>。</p> </li> <li> <p>case #3: object 属于full slab</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3661">free</a> object 到slab fresslist</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3679">move</a> slab到per-CPU的partial list：</p> <p>如果per-CPU的partial list<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2716">没满</a>（&lt;cpu_partial_slabs），就把它放到链表头中。</p> <p>如果per-CPU的partial list已经<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2708">满了</a>（&gt;=cpu_partial_slabs），free_up per-CPU partial list遍历链表并执行执行以下操作</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2642">Move</a> per-CPU slabs 到per-node list的尾部，</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2655">free</a> full freed per-CPU slabs 到page_alloc中（可用于cross-cache的攻击）</p> <p>直到per-node 的slabs的数量达到min_partial</p> <p>现在per-CPU的partial list有空间了，将该slab<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L2726">放进</a>链表头中</p> </li> </ol> <h3 id="explition-case"> <a href="#explition-case" class="anchor-head"></a> explition case </h3> <ol> <li> <p>OOB变UAF</p> <p>所需条件：1)分配vulnerable object（IOCTL_ALLOC）</p> <p>2)可以越界向vulnerable object写数据。</p> </li> </ol> <p>攻击流程：slab已经经过我们的shaping成full slab，并且有一个OOB的vuln object。如果我们现在有一个Vuln的object可以OOB，我们把它在内存上挨着的下一个object视为target object，target object有引用计数之类的东西，通过溢出后就可以控制引用计数，原来的程序会在错误的时机free target object然后我们就可以将target object变成一个UAF。并且该slab会被添加到per-CPU的partial list的头部</p> <p>（注：在shaping slab的时候，我们可以用slab spraying的方式：分配很多的objects，所以问题就是我们需要spray多少个object，这个数量需要根据实际情况来看。）</p> <ol> <li> <p>allocation和OOB组合在一起</p> <p>所需条件：1) allocate vulnerable object并且立即写入OOB数据（IOCTL_ALLOC_AND_OOB）</p> <p>攻击流程：</p> <ol> <li> <p>分配足够的target objects能获取新的active slab，</p> </li> <li> <p>分配更多的target objects去填充这个slab，直到slab变成full，</p> </li> <li> <p>从这个slab中free一个target object，</p> </li> <li> <p>现在我们重新使用这个free slot，并且使用IOCTL_ALLOC_AND_OOB去溢出内存中挨着的下一个targe object。</p> </li> </ol> </li> <li> <p>double-free</p> <p><code class="language-plaintext highlighter-rouge">CONFIG_SLAB_FREELIST_HARDENED=y</code> 开启这个编译选项后，double-free会被<a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L448">检测</a>到</p> </li> </ol> <h3 id="总结"> <a href="#总结" class="anchor-head"></a> 总结 </h3> <p>slub机制是十分复杂的，并且其中还有很多的情况和优化需要考虑，本文只是浅浅涉猎一下。</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c">SLUB source</a></p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3329">__slab_alloc_node</a>allocation 过程开始的地方</p> <p><a href="https://elixir.bootlin.com/linux/v6.6/source/mm/slub.c#L3734">do_slab_free</a>free 过程开始的地方</p> <h3 id="拓展阅读"> <a href="#拓展阅读" class="anchor-head"></a> 拓展阅读 </h3> <p><a href="https://arxiv.org/pdf/2406.02624">Freeing free slot via double-free can be used for cross-cache attacks</a></p> <p>More details about how SLUB works:<a href="https://blogs.oracle.com/linux/post/linux-slub-allocator-internals-and-debugging-1">Linux SLUB Allocator Internals and Debugging</a><a href="https://lore.kernel.org/linux-mm/c71a884d-714f-4741-906f-4df162bde303@suse.cz/">note</a></p> <p>About cache merging, accounting, and hardened usercopy:<a href="https://duasynt.com/blog/linux-kernel-heap-feng-shui-2022">Linux kernel heap feng shui in 2022</a></p> <p>Introduction to cross-cache use-after-free attacks:<a href="https://ruia-ruia.github.io/2022/08/05/CVE-2022-29582-io-uring/">CVE-2022-29582, An io_uring vulnerability</a></p> <p>Improving reliability of Slab shaping:</p> <p><a href="https://haehyun.github.io/papers/playing-for-keaps-22-sec.pdf">Playing for K(H)eaps: Understanding and Improving Linux Kernel Exploit Reliability</a></p> <p><a href="https://www.usenix.org/system/files/sec23summer_79-lee-prepub.pdf">PSPRAY: Timing Side-Channel based Linux Kernel Heap Exploitation Technique</a></p> <p><a href="https://stefangast.eu/papers/slubstick.pdf">SLUBStick: Arbitrary Memory Writes through Practical Software Cross-Cache Attacks within the Linux Kernel</a></p> <h3 id="参考链接"> <a href="#参考链接" class="anchor-head"></a> 参考链接 </h3> <p><a href="https://www.youtube.com/watch?v=XulsBDV4n3w">SLUB演讲视频连接</a></p> <p><a href="https://static.sched.com/hosted_files/lsseu2024/37/2024,%20LSS%20EU_%20SLUB%20Internals%20for%20Exploit%20Developers.pdf">PPT</a></p> </div> </article> </main> <nav class="post-nav"> <a class="post-nav-item post-nav-prev" href="/aliyunctf2025/" > <div class="nav-arrow">Previous</div> <span class="post-title">aliyunctf2025</span> </a> <a class="post-nav-item post-nav-next" href="/afl-study/"> <div class="nav-arrow">Next</div> <span class="post-title">afl源码分析</span> </a> </nav> <footer class="footer"> <!-- <a class="footer_item" href="/thanks">ack.</a> --> <!-- <a class="footer_item" href="javascript::void(0)">resume</a> --> <a class="footer_item" href="/feed.xml">rss</a> <span class="footer_item">&copy; 2025</span> <small class="footer_copyright"> <!-- Klisé Theme: https://github.com/piharpi/jekyll-klise --> <a href="https://github.com/piharpi/jekyll-klise" target="_blank" rel="noreferrer noopener" >klisé</a > theme on <a href="https://jekyllrb.com" target="_blank" rel="noreferrer noopener" >jekyll</a > </small> </footer> <script src="/assets/js/main.js" defer="defer"></script> </div> </body> </html>

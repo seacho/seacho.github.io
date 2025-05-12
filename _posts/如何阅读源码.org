@@ -1,0 +1,41 @@
+* 游戏心理
+
+** be fearless 无所畏惧
+
+理解一个大型代码库是愚蠢的，有的项目甚至是一个团队几百人写的。一个人负责一个模块，开发人员甚至都不能完全了解。
+
+** be willing to be confused
+
+不知道这个变量干嘛的，但仍会往下看
+
+** think in terms of doing several passes
+《如何阅读一本书》
+
+** 
+
+* 心理学
+源于教育如何运作，学习如何运作，
+
+** have a sense of how the brain processes information
+
+** have a sense of what you are looking for
+
+** familiarity in practice is often more important than understanding
+
+冯诺依曼曾说，你无法理解数学，你只是熟悉数学
+
+** be honest about what you understand
+
+
+
+* 技术
+
+** 数据结构和算法
+
+** know a programming language and have a programming practice
+
+** have an algorithm in mind for exploring the code
+
+** focus on the human-facing artifacts rather than machine-facing artifacts
+
+* 

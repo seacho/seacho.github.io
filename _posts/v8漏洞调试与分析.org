@@ -1,0 +1,38 @@
+
+
+** v8基础
+
+浏览器内核主要包含渲染引擎和js引擎，
+
+
+** 渲染引擎
+
+[howbrowserswork](https://web.dev/howbrowserswork/)
+
+解析HTML文档并将转成 *DOM树*，DOM树由DOM
+
+** js引擎
+
+js是一种解释型语言，js引擎就是编译js代码，并解释执行。
+主流的js引擎包括：
+
+- Chrome V8,
+- Safari JavaScriptCore
+- Firefox SpiderMonkey
+- Edge ChakraCore(2019年后换成v8)
+- IE Jscript
+** v8
+
+v8用c++实现，解析 js代码，构造AST抽象语法树，生成字节码(bytecode)，对于“热代码”，将通过JIT编译成机器码执行。
+
+d8 --print-ast poc.js
+
+*** 对象模型
+
+object.h
+
+object：v8自己创建类，由自身来维护，不使用c++的机制，也就是说不会自动调用构造析构函数，直接通过AllocateRaw函数在v8的heap上分配一块内存。
+
+
+
+

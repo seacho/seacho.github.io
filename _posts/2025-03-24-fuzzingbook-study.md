@@ -1,0 +1,620 @@
+---
+title: "fuzzingbook阅读笔记"
+date: 2025-03-24
+layout: post
+categories: 
+- PWN,linux
+tags: 
+- PWN,linux
+---
+
+最近学习的fuzz技术，简单做下笔记。
+
+
+## coverage
+
+cc &#x2013;coverage -o cgi\_decode cgi\_decode.c
+
+gcov cgi\_decode cgi\_decode-cgi\_decode
+
+cgi\_decode.c.gcov
+
+In the .gcov file, each line is prefixed with the number of times it was called (- stands for a non-executable line, ##### stands for zero) as well as the line number. We can take a look at cgi\_decode(), for instance, and see that the only code not executed yet is the return -1 for an illegal input.
+
+```python
+
+def read_gcov_coverage(c_file):
+    gcov_file = c_file + ".gcov"
+    coverage = set()
+    with open(gcov_file) as file:
+        for line in file.readlines():
+            elems = line.split(':')
+            covered = elems[0].strip()
+            line_number = int(elems[1].strip())
+            if covered.startswith('-') or covered.startswith('#'):
+                continue
+            coverage.add((c_file, line_number))
+    return coverage
+
+
+coverage = read_gcov_coverage('cgi_decode.c')    
+
+```
+
+
+## Greybox Fuzzing
+
+power schedule：我们的目标是最大限度地利用fuzz的seed所花费的时间，从而在更短的时间内实现更高的覆盖率。于是我们给seed的优先级排个序。我们定义seed的被选择的可能性叫做，seed's energy 在整个模糊测试过程中，我们希望优先考虑更有希望的seed，我们将确定seed 's power的过程称为模糊器的power schedule。
+
+
+## Search-Based Fuzzing
+
+启发式比彻底的搜索要高效。
+
+基本思想：
+
+
+### fitness function
+
+定义一个Fitness function，所有的启发式算法（meta-heuristics）都是基于启发式（heuristics）函数的使用，该函数用来估计给定候选方案的好坏。这种“goodness”被称为个体的“fitness”。适应度函数是将搜索空间中的任何点映射到数值（适应度值）的函数。搜索空间中的候选解相对于最优解越好，其适应度值就越好。
+
+比如，下面这个例子
+
+```python
+def test_me(x, y):
+    if x == 2 * (y + 1):
+        return True
+    else:
+        return False
+
+def calculate_distance(x, y):
+  return abs(x - 2 * (y + 1))
+
+
+```
+
+我们可以使用这个距离值作为我们的适应度函数，因为我们可以很好地衡量我们离最优解有多近。然而，请注意，在这种情况下，距离越小越好。
+
+适应度函数应计算具体测试执行的距离值。也就是说，我们想运行程序，然后学习这次执行的距离值。但是分支条件隐藏在目标函数的源代码中，其值可能是沿着到达它的执行路径进行的各种计算的结果。即使在我们的例子中，该条件是一个直接使用函数输入值的方程，但通常情况并非如此，它可能和衍生出来值一样。因此，我们需要在条件语句中直接观察到计算距离度量所需的值。
+
+```python
+
+def test_me_instrumented(x, y):  # type: ignore
+    global distance
+    distance = calculate_distance(x, y)
+    if x == 2 * (y + 1):
+        return True
+    else:
+        return False
+
+def get_fitness(x, y):
+  global distance
+  test_me_instrumented(x, y)
+  fitness = distance
+  return fitness
+
+```
+
+
+### Hillclimbing 算法
+
+让我们使用最简单的元启发式算法来探索这个搜索空间，Hillclimbing算法。（跟机器学习有点像）
+
+在确定了表示（整数的两个元组）和适应度函数（到目标分支的距离）之后。我们来看这个算法，该算法试图在我们的表示定义的搜索空间中寻找最优解。但是在我们的搜索环境中，最好的值不是那些高的值，而是低的值。（下山更形象）。算法本身非常简单：
+1.取一个随机起点
+2.确定所有邻居的适应度值
+3.移动到具有最佳健身值的邻居
+4.如果未找到解决方案，请继续执行步骤2
+
+```python
+LOG_VALUES = 20  # Number of values to log
+def hillclimber():
+    # Create and evaluate starting point
+    x, y = random.randint(MIN, MAX), random.randint(MIN, MAX)
+    fitness = get_fitness(x, y)
+    print("Initial value: %d, %d at fitness %.4f" % (x, y, fitness))
+    iterations = 0
+    logs = 0
+
+    # Stop once we have found an optimal solution
+    while fitness > 0:
+        iterations += 1
+        # Move to first neighbor with a better fitness
+        for (nextx, nexty) in neighbors(x, y):
+            new_fitness = get_fitness(nextx, nexty)
+
+            # Smaller fitness values are better
+            if new_fitness < fitness:
+                x, y = nextx, nexty
+                fitness = new_fitness
+                if logs < LOG_VALUES:
+                    print("New value: %d, %d at fitness %.4f" % (x, y, fitness))
+                elif logs == LOG_VALUES:
+                    print("...")
+                logs += 1
+                break
+
+    print("Found optimum after %d iterations at %d, %d" % (iterations, x, y))
+
+```
+
+首先为x和y选择随机值。我们使用-1000&#x2013;1000范围内的低值来减少玩这个例子时的搜索时间。然后，我们通过调用get\_fitness来确定这个起点的适应度值。我们正试图找到最小的适应度值，因此我们现在循环，直到找到适应度值0（即最佳值）。
+
+```python
+def steepest_ascent_hillclimber():
+  # Create and evaluate starting point
+  x, y = random.randint(MIN, MAX), random.randint(MIN, MAX)
+  fitness = get_fitness(x, y)
+  print("Initial value: %d, %d at fitness %.4f" % (x, y, fitness))
+  iterations = 0
+  logs = 0
+
+  # Stop once we have found an optimal solution
+  while fitness > 0:
+      iterations += 1
+      # Move to first neighbor with a better fitness
+      for (nextx, nexty) in neighbors(x, y):
+          new_fitness = get_fitness(nextx, nexty)
+          if new_fitness < fitness:
+              x, y = nextx, nexty
+              fitness = new_fitness
+              if logs < LOG_VALUES:
+                  print("New value: %d, %d at fitness %.4f" % (x, y, fitness))
+              elif logs == LOG_VALUES:
+                  print("...")
+              logs += 1
+
+  print("Found optimum after %d iterations at %d, %d" % (iterations, x, y))
+
+
+```
+
+但有一个问题：用这个运行我们的登山者不是一个最优的方案，因为它可能永远不会终止。假设我们已经达到了一个点，所有邻居的适应度值都相同或更差。登山者无法移动，永远被困在那里！搜索环境中的这样一个点称为局部最优点。如果达到这样一个点，最简单的办法就是放弃，从一个新的随机点重新开始。这就是我们将在登山者身上随机重启的方法。
+
+```python
+def restarting_hillclimber(fitness_function):
+    data = []
+
+    # Create and evaluate starting point
+    x, y = random.randint(MIN, MAX), random.randint(MIN, MAX)
+    fitness = fitness_function(x, y)
+    data += [fitness]
+    print("Initial value: %d, %d at fitness %.4f" % (x, y, fitness))
+    iterations = 0
+
+    # Stop once we have found an optimal solution
+    while fitness > 0:
+        changed = False
+        iterations += 1
+        # Move to first neighbor with a better fitness
+        for (nextx, nexty) in neighbors(x, y):
+            new_fitness = fitness_function(nextx, nexty)
+            if new_fitness < fitness:
+                x, y = nextx, nexty
+                fitness = new_fitness
+                data += [fitness]
+                changed = True
+                break
+        if not changed:
+            x, y = random.randint(MIN, MAX), random.randint(MIN, MAX)
+            fitness = fitness_function(x, y)
+            data += [fitness]
+
+    print("Found optimum after %d iterations at %d, %d" % (iterations, x, y))
+    return data
+
+```
+
+
+### Fitness Function to Create Valid Hexadecimal Inputs
+
+```python
+def get_fitness_cgi(x):
+    # Reset any distance values from previous executions
+    global distances_true, distances_false
+    distances_true = {}
+    distances_false = {}
+
+    # Run the function under test
+    try:
+        cgi_decode_instrumented(x)
+    except BaseException:
+        pass
+
+    # Sum up branch distances
+    fitness = 0.0
+    for branch in [1, 3, 4, 5]:
+        if branch in distances_true:
+            fitness += normalize(distances_true[branch])
+        else:
+            fitness += 1.0
+
+    for branch in [2]:
+        if branch in distances_false:
+            fitness += normalize(distances_false[branch])
+        else:
+            fitness += 1.0
+
+    return fitness
+
+
+```
+
+
+### 具体应用到现实程序中
+
+假设我们现在有一个这样的程序
+
+```python
+
+def cgi_decode(s):
+    """Decode the CGI-encoded string `s`:
+       * replace "+" by " "
+       * replace "%xx" by the character with hex number xx.
+       Return the decoded string.  Raise `ValueError` for invalid inputs."""
+
+    # Mapping of hex digits to their integer values
+    hex_values = {
+        '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
+        '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+        'a': 10, 'b': 11, 'c': 12, 'd': 13, 'e': 14, 'f': 15,
+        'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15,
+    }
+
+    t = ""
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == '+':
+            t += ' '
+        elif c == '%':
+            digit_high, digit_low = s[i + 1], s[i + 2]
+            i += 2
+            if digit_high in hex_values and digit_low in hex_values:
+                v = hex_values[digit_high] * 16 + hex_values[digit_low]
+                t += chr(v)
+            else:
+                raise ValueError("Invalid encoding")
+        else:
+            t += c
+        i += 1
+    return t  
+```
+
+我们现在建模定义它的临点和评估每个点好坏的函数：
+
+```python
+
+def neighbor_strings(x):
+    n = []
+    for pos in range(len(x)):
+        c = ord(x[pos])
+        if c < 126:
+            n += [x[:pos] + chr(c + 1) + x[pos + 1:]]
+        if c > 32:
+            n += [x[:pos] + chr(c - 1) + x[pos + 1:]]
+    return n
+
+def distance_character(target, values):
+
+  # Initialize with very large value so that any comparison is better
+  minimum = sys.maxsize
+
+  for elem in values:
+      distance = abs(target - elem)
+      if distance < minimum:
+          minimum = distance
+  return minimum
+```
+
+到目前为止，我们假设我们总是希望条件评估为true，实际情况我们也可能希望我们的条件评估为false。因此，每个if条件实际上都有两个距离估计，一个用于估计它离真有多近，一个是估计它离假有多近。如果条件为真，则true distance 为0；如果条件为假，则false distance为0。
+
+更一般地说，可以有其他类型的比较，例如使用关系运算符。考虑cgi\_decode（）中的循环条件：i<len（s），即它使用小于比较运算符。将我们的分支距离概念扩展到涵盖不同类型的比较，并计算真距离和假距离，这是非常简单的。下表显示了如何计算不同类型比较的距离：
+
+| Condition | Distance True | Distance False |
+|---|---|---|
+| a == b | abs(a - b) | 1 |
+| a != b | 1 | abs(a - b) |
+| a < b | b - a + 1 | a - b |
+| a <= b | b - a | a - b + 1 |
+| a > b | a - b + 1 | b - a |
+
+请注意，其中一些计算添加了一个常数1。原因很简单：假设我们想让a<b求值为真，让a=27和b=27。条件不成立，但简单地取差值会得到0的结果。为了避免这种情况，我们必须添加一个常量值。这个值是否为1并不重要——任何正常数都有效。
+
+在cgi\_decode（）函数中，我们还可以找到一个更复杂的谓词，它由两个条件组成，由逻辑和连接：
+
+`if digit_high in hex_values and digit_low in hex_values:`
+
+原则上，分支距离的定义是，使连接A和B为真的距离等于A和B的分支距离之和，因为这两个条件都需要为真。同样，使A或B为真的分支距离将是A和B的两个分支距离中的最小值，因为如果这两个条件之一为真，则足以使整个表达式为真。
+
+但是，这在实践中并不像那么容易：谓词可以由嵌套条件和否定组成，在能够应用此计算之前，需要将表达式转换为规范形式。此外，大多数现代编程语言都使用短路求值：如果存在条件A或B，并且A为真，则B永远不会被求值。如果B是一个有函数调用的表达式，那么通过计算B的分支距离，即使短路评估会避免其执行，我们也可能会改变程序行为（通过调用在正常行为中不会执行的调用函数），这就有问题了。
+
+使用全局变量和临时变量的另一种方法是用对辅助函数的调用替换实际比较，其中原始表达式被视为参数，运算符是一个额外的参数。假设我们有一个函数evaluate\_condition（），它有四个参数：
+num是标识条件的唯一id；
+op是比较的运算符；
+lhs和rhs是操作数。
+
+```python
+def evaluate_condition(num, op, lhs, rhs):
+    distance_true = 0
+    distance_false = 0
+    if op == "Eq":
+        if lhs == rhs:
+            distance_false = 1
+        else:
+            distance_true = abs(lhs - rhs)
+
+    # ... code for other types of conditions
+
+    if distance_true == 0:
+        return True
+    else:
+        return False
+
+
+```
+
+evaluate\_condition（）函数还没有存储观测到的距离。显然，我们需要将值存储在某个地方，以便我们可以从健身函数访问它。由于cgi\_decode（）程序由几个条件组成，对于每个条件，我们可能对真距离和假距离感兴趣，因此我们只需使用两个全局字典distances\_true和distances\_false，并定义一个辅助函数来存储字典中观察到的距离值：
+
+```python
+def update_maps(condition_num, d_true, d_false):
+    global distances_true, distances_false
+
+    if condition_num in distances_true.keys():
+        distances_true[condition_num] = min(
+            distances_true[condition_num], d_true)
+    else:
+        distances_true[condition_num] = d_true
+
+    if condition_num in distances_false.keys():
+        distances_false[condition_num] = min(
+            distances_false[condition_num], d_false)
+    else:
+        distances_false[condition_num] = d_false
+
+```
+
+但是如果条件复杂了如何，在Python中，使用程序的抽象语法树（AST）自动替换比较实际上非常容易。在AST中，比较通常是一个具有运算符属性的树节点，以及左侧和右侧运算符的两个子节点。要用evaluate\_condition（）调用替换这样的比较，只需将AST中的比较节点替换为函数调用节点，BranchTransformer类就是这样使用Python AST模块中的NodeTransformer的：
+
+```python
+  import ast
+  class BranchTransformer(ast.NodeTransformer):
+
+    branch_num = 0
+
+    def visit_FunctionDef(self, node):
+        node.name = node.name + "_instrumented"
+        return self.generic_visit(node)
+
+    def visit_Compare(self, node):
+        if node.ops[0] in [ast.Is, ast.IsNot, ast.In, ast.NotIn]:
+            return node
+
+        self.branch_num += 1
+        return ast.Call(func=ast.Name("evaluate_condition", ast.Load()),
+                        args=[ast.Num(self.branch_num),
+                              ast.Str(node.ops[0].__class__.__name__),
+                              node.left,
+                              node.comparators[0]],
+                        keywords=[],
+                        starargs=None,
+                        kwargs=None)
+
+
+source = inspect.getsource(cgi_decode)
+node = ast.parse(source)
+BranchTransformer().visit(node)
+
+# Make sure the line numbers are ok before printing
+node = ast.fix_missing_locations(node)
+print_content(ast.unparse(node), '.py')
+
+
+```
+
+
+### Evolutionary Search
+
+如果搜索空间很小，hillclimbing自然挺好，但是如果是UNICODE呢，所以我们可以在hillclimb之前做点更改提高效率，比如让它迭代100次，而不是全部迭代完。
+
+```python
+def terminal_repr(s):
+    return terminal_escape(repr(s))
+
+def hillclimb_cgi_limited(max_iterations):
+    x = random_unicode_string(10)
+    fitness = get_fitness_cgi(x)
+    print("Initial input: %s at fitness %.4f" % (terminal_repr(x), fitness))
+
+    iteration = 0
+    logs = 0
+    while fitness > 0 and iteration < max_iterations:
+        changed = False
+        for (nextx) in unicode_string_neighbors(x):
+            new_fitness = get_fitness_cgi(nextx)
+            if new_fitness < fitness:
+                x = nextx
+                fitness = new_fitness
+                changed = True
+                if logs < LOG_VALUES:
+                    print("New value: %s at fitness %.4f" %
+                          (terminal_repr(x), fitness))
+                elif logs == LOG_VALUES:
+                    print("...")
+                logs += 1
+                break
+
+        # Random restart if necessary
+        if not changed:
+            x = random_string(10)
+            fitness = get_fitness_cgi(x)
+        iteration += 1
+
+    print("Optimum at %s, fitness %.4f" % (terminal_repr(x), fitness))
+
+```
+
+
+## Global Search
+
+hillclimb算法在搜索的每一步都会探索一个点的neibor，如果搜索空间太大，那么这需要太长时间。另一种策略是不将搜索限制在局部邻域，而是全局搜索搜索空间。也就是说，允许搜索算法在搜索空间周围进行更大的步骤。hillclimb的一个简单修改将其从局部搜索算法转换为全局搜索算法：不是查看所有近邻，而是以允许更大修改的方式对个体进行突变。
+
+突变是指在搜索空间中迈出更大一步的变化。实现突变时的一个重要决定是，理论上，只需连续应用突变，就可以到达搜索空间中的任何点。然而，突变通常不应该用随机的个体完全取代个体。为了使搜索有效，重要的是突变对仍然保持其大部分特征的个体构成合理的改变。对于我们的10个字符串的搜索问题，一个可能的突变是只替换10个字符中的1个，如下所示：
+
+```python
+def randomized_hillclimb():
+    x = random_unicode_string(10)
+    fitness = get_fitness_cgi(x)
+    print("Initial value: %s at fitness %.4f" %
+          (terminal_repr(x), fitness))
+
+    iterations = 0
+    while fitness > 0:
+        mutated = flip_random_character(x)
+        new_fitness = get_fitness_cgi(mutated)
+        if new_fitness <= fitness:
+            x = mutated
+            fitness = new_fitness
+            #print("New value: %s at fitness %.4f" %(terminal_repr(x), fitness))
+        iterations += 1
+
+    print("Optimum at %s after %d iterations" %
+          (terminal_repr(x), iterations))
+
+```
+
+
+### Genetic Algorithms
+
+最著名的突变算法之一是遗传算法（GA）。遗传算法基于这样一种理念，即问题解决方案可以通过基因编码：染色体由一系列基因组成，其中每个基因编码一个个体的一个特征（例如眼睛颜色、头发颜色等）。适应度函数可以获取此描述中包含的信息，即所谓的基因型，并评估由此产生的表型的特性，即这种遗传编码所代表的实际解决方案。个体的适应度值是根据表型来衡量的。
+
+在搜索中使用适应度值通常用“适者生存”来解释，但达尔文对进化的一个关键见解是，选择不仅由生存来定义——个体有性繁殖，选择描述了繁殖过程中的选择压力。这种选择通常受到两种战斗的影响：与雄性竞争的雌性会赢得胜利，而更强壮（更健康）的雄性会获胜；选择也受到显示的影响。达尔文的例子是孔雀：孔雀有长而美丽的尾羽，似乎没有任何作用，似乎也不支持自然选择的概念。然而，雌孔雀在选择性伴侣时会受到其外貌的影响。令人印象深刻的装饰表明，雄性在基因上特别健康，会产生健康的后代。这反映在遗传算法中：个体的健康值越高，与另一个个体交配的可能性就越大。
+
+```python
+def selection(evaluated_population, tournament_size):
+    competition = random.sample(evaluated_population, tournament_size)
+    winner = min(competition, key=lambda individual: individual[1])[0]
+
+    # Return a copy of the selected individual
+    return winner[:]
+
+
+```
+
+tournament\_size参数指定从人群中随机选择的个人参与比较的数量。这是一个重要的选择，因为它决定了选择压力：比较规模越大，非常优秀的个人被纳入比赛的可能性就越大。这反过来又增加了这些非常优秀的个体支配下一代的可能性，从而降低了多样性并导致过早收敛。相比之下，如果比较规模太小，那么这会抑制进化。比较规模的最佳值取决于参加人数，但通常相当小（例如5个）。
+
+就像在自然进化中一样，根据健康状况选择的个体会繁殖，形成新一代。在这种繁殖过程中，就像自然繁殖一样，被选中的父母的遗传物质被结合在一起。这通常是通过一种称为交叉的过程完成的，在这种过程中，后代染色体是由其父母的基因产生的。在我们的例子中，染色体是一个字符序列，通过选择一个截止随机点，并根据截止点组合父母染色体的一半来创建后代，就可以简单地跨越两个亲本字符序列。
+
+```python
+
+def crossover(parent1, parent2):
+    pos = random.randint(1, len(parent1))
+
+    offspring1 = parent1[:pos] + parent2[pos:]
+    offspring2 = parent2[:pos] + parent1[pos:]
+
+    return (offspring1, offspring2)
+
+
+def mutate(chromosome):
+  mutated = chromosome[:]
+  P = 1.0 / len(mutated)
+
+  for pos in range(len(mutated)):
+      if random.random() < P:
+          new_c = chr(int(random.gauss(ord(mutated[pos]), 100) % 65536))
+          mutated = mutated[:pos] + new_c + mutated[pos + 1:]
+  return mutated
+
+def genetic_algorithm():
+  # Generate and evaluate initial population
+  generation = 0
+  population = create_population(100)
+  fitness = evaluate_population(population)
+  best = min(fitness, key=lambda item: item[1])
+  best_individual = best[0]
+  best_fitness = best[1]
+  print("Best fitness of initial population: %s - %.10f" %
+      (terminal_repr(best_individual), best_fitness))
+  logs = 0
+
+  # Stop when optimum found, or we run out of patience
+  while best_fitness > 0 and generation < 1000:
+
+      # The next generation will have the same size as the current one
+      new_population = []
+      while len(new_population) < len(population):
+          # Selection
+          offspring1 = selection(fitness, 10)
+          offspring2 = selection(fitness, 10)
+
+          # Crossover
+          if random.random() < 0.7:
+              (offspring1, offspring2) = crossover(offspring1, offspring2)
+
+          # Mutation
+          offspring1 = mutate(offspring1)
+          offspring2 = mutate(offspring2)
+
+          new_population.append(offspring1)
+          new_population.append(offspring2)
+
+      # Once full, the new population replaces the old one
+      generation += 1
+      population = new_population
+      fitness = evaluate_population(population)
+
+      best = min(fitness, key=lambda item: item[1])
+      best_individual = best[0]
+      best_fitness = best[1]
+      if logs < LOG_VALUES:
+          print(
+              "Best fitness at generation %d: %s - %.8f" %
+              (generation, terminal_repr(best_individual), best_fitness))
+      elif logs == LOG_VALUES:
+          print("...")
+      logs += 1
+
+  print(
+      "Best individual: %s, fitness %.10f" %
+      (terminal_repr(best_individual), best_fitness))
+
+
+
+```
+
+
+## Fuzzing with Grammars
+
+本章介绍语法作为一种简单的方法来指定输入语言，并将其用于测试具有语法有效输入的程序。语法被定义为非终结符到替代扩展列表的映射，如下例所示：
+
+```python
+>>> US_PHONE_GRAMMAR: Grammar = {
+>>>     "<start>": ["<phone-number>"],
+>>>     "<phone-number>": ["(<area>)<exchange>-<line>"],
+>>>     "<area>": ["<lead-digit><digit><digit>"],
+>>>     "<exchange>": ["<lead-digit><digit><digit>"],
+>>>     "<line>": ["<digit><digit><digit><digit>"],
+>>>     "<lead-digit>": ["2", "3", "4", "5", "6", "7", "8", "9"],
+>>>     "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+>>> }
+>>> 
+>>> assert is_valid_grammar(US_PHONE_GRAMMAR)
+
+```
+
+非终端符号用尖括号括起来（比如<digital>）。为了从语法生成输入字符串，生产者从开始符号（<start>）开始，并随机选择该符号的随机展开。它会继续这个过程，直到所有非终结符都展开
+
+语法作为人类语言的基础之一，自人类语言存在以来就一直存在。生成语法的第一次形式化是由Dakṣiputra Pā̇ini在公元前350年提出的。作为表达数据和程序形式语言的一般手段，它们在计算机科学中的作用怎么强调都不为过。乔姆斯基的开创性工作介绍了规则语言、上下文无关语法、上下文敏感语法和通用语法的中心模型，因为它们在计算机科学中被使用（和教授）作为指定输入和编程语言的手段。
+
+使用语法生成测试输入可以追溯到Burkhardt{Burkhardt1967}，后来被Hanford{Hanford1970}和Purdom{Purdom1972}重新发现和应用。从那时起，语法测试最重要的用途就是编译器测试。实际上，基于语法的测试是编译器和Web浏览器正常工作的一个重要原因：
+
+[CSmith](<https://embed.cs.utah.edu/csmith/>)工具{Yang2011}专门针对C程序，从C语法开始，然后应用其他步骤，例如引用之前定义的变量和函数或确保整数和类型安全。他们的作者使用它“发现并报告了400多个以前未知的编译器错误”
+
+[LangFuzz](<http://issta2016.cispa.saarland/interview-with-christian-holler/>)的著作《Holler2012》与本书共有两位作者，该著作使用通用语法生成输出，并日夜用于生成JavaScript程序和测试其解释器；截至今天，它在Mozilla Firefox、Google Chrome和Microsoft Edge等浏览器中发现了2600多个错误。
+
+[EMI](<https://web.cs.ucdavis.edu/~su/emi-project/>)项目{Le2014}使用语法对C编译器进行压力测试，将已知的测试转换为在所有输入上语义等效的替代程序。这再次导致C编译器中的100多个错误得到修复。
+
+[Grammarinator](<https://github.com/renatahodovan/grammarinator>) \cite{Hodovan2018}是一个开源语法模糊器（用Python编写！），使用流行的ANTLR格式作为语法规范。与LangFuzz一样，它使用语法进行解析和生成，并在JerryScript轻量级JavaScript引擎和相关平台中发现了100多个问题。
+
+[Domato](<https://github.com/googleprojectzero/domato>)是一个通用的语法生成引擎，专门用于模糊DOM输入。它揭示了流行网络浏览器中的许多安全问题。

@@ -1,0 +1,84 @@
+* MacOS
+
+使用[OSX-KVM](https://github.com/kholia/OSX-KVM)
+1. 使用fetco-macOS-v2.py下载镜像
+2. 使用OpenCore-Boot-macOS.sh运行虚拟机。
+关于调试后边再看
+
+* Frida逆向调试
+
+python虚拟环境中
+
+#+BEGIN_SRC python
+  pip install frida-tools
+  npm install frida
+#+END_SRC
+
+jadx-gui反编译工具
+adb logcat -c 清空日志
+adb logcat | grep ActivityManager 可以找到启动的activity
+
+frida -U com.example.androiddemo -l hook.js
+
+#+BEGIN_SRC JS
+function main ()
+  Java.perform (function(){
+    var LoginActivity = Java.use("com.github.lastingyang.androiddemo.Activity.LoginActivity");
+    LoginActivity.a.overload('java.lang.String', 'java.lang.String'). implementation = function (str, str2) {
+      var result = this.a(str, str2);
+      console.log ("LoginActivity.a:", str, str2, result);
+      return result;
+    }
+  })
+setImmediate (main);
+#+END_SRC
+
+
+* ctf - pwn
+
+
+#+BEGIN_SRC shell
+  #stop所有镜像：
+  docker stop $(docker ps -a -q)
+  #删除container：
+  docker container prune
+  #删除镜像：
+  docker system prune -a
+
+  #删除untagged images：
+  docker rmi $(docker images | grep "^" | awk "{print $3}")
+  #删除所有镜像：
+  docker rmi $(docker images -q)
+
+  
+  #use Dockerfile
+  docker build -t pwn .
+  docker run -d --name pwn -p 1337:1337 -it pwn
+
+  #contain_name:pwn
+  docker cp pwn:/usr/lib/x86_64-linux-gnu/libc.so.6 ./
+  docker cp pwn:/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 ./
+    
+  patchelf --set-interpreter ./libc/ld-linux-x86-64.so.2 --set-rpath ./libc filename
+
+#+END_SRC
+
+
+
+#+BEGIN_SRC shell
+
+  readelf -S xxx #打印文件的section信息 W可以显示更多的信息
+  objdump -j .interp - s #可以显示文件的解释器ld
+  readelf -n a.out
+  dwarfdump a.out #调试信息
+  add2line
+  debuginfod  #debuginfod serves debug information over HTTP (a bit like Microsoft Symbol Server)
+  sudo apt install debuginfod debuginfod
+  DEBUGINFOD_URLS=localhost:8002 gdb a.out
+  
+
+#+END_SRC
+
+
+
+glibc 的细节：realloc(如果后续块没有被使用不会触发free)

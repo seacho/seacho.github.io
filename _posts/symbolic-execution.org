@@ -1,0 +1,148 @@
+
+符号执行：
+
+应用：寻找bug
+
+verifucation：eliminates classes of bugs，
+testing: know bugs
+fuzzers: cookup some unusual case; unknown bugs
+
+symbolic-execution:
+
+bugs: ---  crash 除零，null referce out-of-bound access，app specific。
+
+goals: find deep bugs。
+ideas:
+   ---compute on symbolic values
+   ---create path conditions
+   ---use slover to see if a branch is possible
+
+Ex:
+
+#+BEGIN_SRC
+
+  read x, y;
+  if x > y
+    x= y
+  if x < y
+    x=x+1
+  if x+y=7
+    error
+   
+  runtime components
+  
+  遇到一个条件语句fork一次
+  
+  应用：BPF的check部分
+
+  
+  
+#+END_SRC
+
+solver(求解器): z3
+
+klee，angr，s2e，triton
+ 
+
+** Triton
+
+
+** angr
+
+ipython-accessible
+powerful analyses
+wersatile
+well-encapsulated
+open and expandable
+architecture "independent":x86, amd64, mips, mips64, arm, aarch64, ppc, ppc64
+
+功能模块
+binary loader
+static analysis routines:
+  control-flow Graph
+  Data-flow Analysis
+  Value-Set analysis
+Symbolic Execution Engine
+
+question: How do I trigger path X or condition Y?
+
+  Dynamic analysis
+    Input A? NO. Input B? No.Input C? ...
+    Based on concrete Inputs to application
+
+    
+  (Concrete) Static analysis
+    You can't / you might be able to
+    Based on various static techniques
+
+  Now:
+  1.Interpret the application
+  2.Track contraints on variables
+  3.when the required condition is trigger, "concretize" to obtain a possible input
+
+
+  GirlScout，BoyScout
+
+
+  Application:
+
+    rop.gadgets()
+    cdc:Cyber Grand Challenge
+    
+
+
+** SAT
+
+NP-hard 每增加一个逻辑变量，复杂度会是指数增加。
+
+    
+** SMT
+
+判断命题成立的条件
+
+Z3，YICES，CVC4
+
+使用SMT-LIB语法标准
+
+z3 -smt2 file
+
+通用成分：
+set-logic and/or set-options(不写也可以)
+declaration：declare-const declare-fun
+(assert...) 包含着公式
+(check-sat) do actual sat solving
+(get-model) show the satisfiying assignment in case of satifiablity
+
+操作符：> < = >= <= + * and or not... implies(蕴含) iff(双向蕴含) ite (if-then-else)
+
+
+ex：
+
+SMT求解八皇后问题：
+
+*** Arithmetic pure SAT
+
+整数的+-x
+
+
+
+** 应用
+
+矩形fittness
+定坐标，
+
+解数独
+
+制定计划
+
+有界模型检查
+
+
+** resolution
+
+
+
+
+
+
+

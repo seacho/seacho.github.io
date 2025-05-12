@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Machine Learning, Neural Network, GPT</title>
+<meta name="author" content="dh"/>
+<meta name="description" content=""/>
+<meta name="keywords" content=""/>
+<style type="text/css">
+.underline { text-decoration: underline; }
+</style>
+<link rel="stylesheet" href="./reveal.js/css/reveal.css"/>
+
+<link rel="stylesheet" href="./reveal.js/css/theme/moon.css" id="theme"/>
+
+
+<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+<script>
+    if( window.location.search.match( /print-pdf/gi ) ) {
+        var link = document.createElement( 'link' );
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = './reveal.js/css/print/pdf.css';
+        document.getElementsByTagName( 'head' )[0].appendChild( link );
+    }
+</script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+<section id="sec-title-slide"><h1 class="title">Machine Learning, Neural Network, GPT</h1><p class="subtitle"></p>
+<h2 class="author">dh</h2><h2 class="date">2025-02-26</h2><p class="date">Created: 2025-02-26 Wed 18:05</p>
+</section>
+<p>
+&lt;script type="text/javascript" async
+  src="<a href="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js</a>"&gt;
+&lt;/script&gt;
+</p>
+<section>
+<section id="slide-orgb9bc752">
+<h2 id="orgb9bc752"><span class="section-number-2">1.</span> 线性回归模型</h2>
+<p>
+\[
+f_{w,b}(x)=wx+b
+\]
+w, b是 <b>模型参数</b> 有时候也叫 <b>系数</b> 或 <b>权重</b> ，对于线性回归我们要做的就是选择参数w和b的值。
+</p>
+</section>
+<section id="slide-org91fc45c">
+<h3 id="org91fc45c"><span class="section-number-3">1.1.</span> 代价函数 - Cost Function</h3>
+<p>
+那么如何衡量一条直线与训练数据的拟合程度呢？这里我们就要定义一个代价函数 &#x2013; 平方差代价函数。(即最小二乘法)
+</p>
+
+<p>
+\[J(w,b)=\frac{1}{2m}\sum_{i=1}^{m}\Big(
+\begin{array}
+{c}{{\hat{y}^{(i)}-y^{(i)}\Big)^{2}}} \\
+\end{array}\]
+</p>
+
+<p>
+目标是通过不断调整w,b找到最小的J。
+</p>
+
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #b4fa70;">def</span> <span style="color: #fce94f;">compute_cost</span>(x, y, w, b): 
+    <span style="color: #e9b96e;">"""</span>
+<span style="color: #e9b96e;">    Computes the cost function for linear regression.</span>
+
+<span style="color: #e9b96e;">    Args:</span>
+<span style="color: #e9b96e;">      x (ndarray (m,)): Data, m examples </span>
+<span style="color: #e9b96e;">      y (ndarray (m,)): target values</span>
+<span style="color: #e9b96e;">      w,b (scalar)    : model parameters  </span>
+
+<span style="color: #e9b96e;">    Returns</span>
+<span style="color: #e9b96e;">        total_cost (float): The cost of using w,b as the parameters for linear regression</span>
+<span style="color: #e9b96e;">               to fit the data points in x and y</span>
+<span style="color: #e9b96e;">    """</span>
+    <span style="color: #73d216;"># </span><span style="color: #73d216;">number of training examples</span>
+    <span style="color: #fcaf3e;">m</span> = x.shape[0] 
+
+    <span style="color: #fcaf3e;">cost_sum</span> = 0 
+    <span style="color: #b4fa70;">for</span> i <span style="color: #b4fa70;">in</span> <span style="color: #e090d7;">range</span>(m): 
+        <span style="color: #fcaf3e;">f_wb</span> = w * x[i] + b   
+        <span style="color: #fcaf3e;">cost</span> = (f_wb - y[i]) ** 2  
+        <span style="color: #fcaf3e;">cost_sum</span> = cost_sum + cost  
+    <span style="color: #fcaf3e;">total_cost</span> = (1 / (2 * m)) * cost_sum  
+
+    <span style="color: #b4fa70;">return</span> total_cost
+
+</code></pre>
+</div>
+</section>
+<section id="slide-orgcdd42fe">
+<h3 id="orgcdd42fe"><span class="section-number-3">1.2.</span> 梯度下降</h3>
+<p>
+后边的问题就是如何寻找w, b了。
+</p>
+
+<p>
+从一些w,b开始。（在线性回归中，初始值是多少不重要，一般都是将他们设置为0）
+</p>
+
+<p>
+每次都稍微改变参数w,b，以尝试找到更小的J。
+</p>
+
+<p>
+直到希望J稳定在或接近最小值。（有可能存在不止一个可能的最小值）
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{equation}\begin{cases}w=w-\alpha\frac{\partial}{\partial w}J(w,b)\\ b=b-\alpha\frac{\partial}{\partial b}J(w,b)\end{cases}\end{equation}
+
+</div>
+<p>
+$$
+</p>
+
+<p>
+\(\alpha\) 是学习率(learning rate) 形象点叫步长，这个值取得太小，导致计算太慢；太大可能导致永远达不到最小值。当我们接近局部最小梯度下降时，会采用更小的步长。
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{equation}\begin{cases}w=w-\alpha\frac{1}{m}\sum_{i=1}^{m}(f_{w,b}(x^{(i)})-y^{(i)})x^{(i)}\\ b=b-\alpha\frac{1}{m}\sum_{i=1}^{m}(f_{w,b}(x^{(i)})-y^{(i)})\end{cases}\end{equation}
+
+</div>
+<p>
+$$
+</p>
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #b4fa70;">def</span> <span style="color: #fce94f;">gradientDescent</span>(X, y, theta, alpha, iters):
+    <span style="color: #fcaf3e;">temp</span> = np.matrix(np.zeros(theta.shape))
+    <span style="color: #fcaf3e;">parameters</span> = <span style="color: #e090d7;">int</span>(theta.ravel().shape[1])
+    <span style="color: #fcaf3e;">cost</span> = np.zeros(iters)
+
+    <span style="color: #b4fa70;">for</span> i <span style="color: #b4fa70;">in</span> <span style="color: #e090d7;">range</span>(iters):
+        <span style="color: #fcaf3e;">error</span> = (X * theta.T) - y
+
+        <span style="color: #b4fa70;">for</span> j <span style="color: #b4fa70;">in</span> <span style="color: #e090d7;">range</span>(parameters):
+            <span style="color: #fcaf3e;">term</span> = np.multiply(error, X[:,j])
+            <span style="color: #fcaf3e;">temp</span>[0,j] = theta[0,j] - ((alpha / <span style="color: #e090d7;">len</span>(X)) * np.<span style="color: #e090d7;">sum</span>(term))
+
+        <span style="color: #fcaf3e;">theta</span> = temp
+        <span style="color: #fcaf3e;">cost</span>[i] = computeCost(X, y, theta)
+
+    <span style="color: #b4fa70;">return</span> theta, cost
+</code></pre>
+</div>
+</section>
+<section id="slide-org1f0ceb9">
+<h3 id="org1f0ceb9"><span class="section-number-3">1.3.</span> 多元线性回归</h3>
+<div class="outline-text-3" id="text-1-3">
+</div>
+</section>
+<section id="slide-org8fcea34">
+<h4 id="org8fcea34"><span class="section-number-4">1.3.1.</span> 多维度向量化</h4>
+<p>
+特征不止一个维度，可以用向量表示:
+\[
+\vec{x^i} = [{x_{1}}^i, {x_{2}}^i, {x_{3}}^i...{x_{n}}^i]
+\]
+</p>
+
+<p>
+\[
+f_{w,b}(\vec{x}) = \vec{w} \cdot \vec{x} + b
+\]
+</p>
+
+
+<p>
+\[
+h_{w}\left( x \right)=w^{T}X={w_{0}}+{w_{1}}{x_{1}}+{w_{2}}{x_{2}}+...+{w_{n}}{x_{n}}
+\]
+</p>
+
+<p>
+\[
+f_{\vec{w},b}(\vec{x}) = \sum_{j=1}^{n} w_j x_j + b
+\]
+</p>
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #fcaf3e;">w</span> = np.array([1.0, 2.5, -3.31)
+b = 4
+x = np.array([10, 20, 30])
+
+f = 0
+<span style="color: #b4fa70;">for</span> j <span style="color: #b4fa70;">in</span> <span style="color: #e090d7;">range</span> (0,n):
+    f = f + w[j] * x[j]
+f = f + b
+<span style="color: #73d216;">#</span><span style="color: #73d216;">&#31561;&#20215;&#31616;&#21270; </span>
+f = np. dot (w,x) + b
+</code></pre>
+</div>
+
+
+<p>
+与单变量线性回归类似，在多变量线性回归中，我们也构建一个代价函数，则这个代价函数是所有建模误差的平方和，即：
+\[
+J\left( {w_{0}},{w_{1}}...{w_{n},b} \right)=\frac{1}{2m}\sum\limits_{i=1}^{m}{{{\left( h_{w} \left({x}^{\left( i \right)} \right)-{y}^{\left( i \right)} \right)}^{2}}}
+\]
+</p>
+</section>
+<section id="slide-org4aa7156">
+<h4 id="org4aa7156"><span class="section-number-4">1.3.2.</span> 多重线性回归的梯度下降</h4>
+<p>
+之前的一些符号概念：
+</p>
+
+<p>
+<b>参数:</b> \(w_1,...w_n, b\)
+</p>
+
+<p>
+<b>Model:</b> 回归方程
+</p>
+
+<p>
+<b>Cost function:</b>
+\[
+J\left( {w_{0}},{w_{1}}...{w_{n},b} \right)
+\]
+</p>
+
+<p>
+<b>Gradient descent:</b>
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{aligned} \mathrm{rep} & \mathrm{eat} \\ & w_{j}=w_{j}-\alpha\frac{\partial}{\partial w_{j}}J(w_{1},\cdots,w_{n},b) \\ & b=b-\alpha\frac{\partial}{\partial b}J(w_1,\cdots,w_n,b) \end{aligned}
+
+</div>
+<p>
+$$
+</p>
+</section>
+<section id="slide-orgeaeaccc">
+<h4 id="orgeaeaccc"><span class="section-number-4">1.3.3.</span> 特征缩放 (让梯度下降的更快)</h4>
+<p>
+计算平均值，然后归一化处理
+</p>
+
+<p>
+检查梯度下降是否收敛：梯度下降的任务是找到参数w和b，希望最小化损失函数。
+</p>
+</section>
+<section id="slide-orga3dfee9">
+<h4 id="orga3dfee9"><span class="section-number-4">1.3.4.</span> 学习率的选择</h4>
+
+
+</section>
+<section id="slide-orgcd41d2a">
+<h4 id="orgcd41d2a"><span class="section-number-4">1.3.5.</span> 特征的选择</h4>
+<p>
+为算法选择最合适的特征，
+</p>
+</section>
+</section>
+<section>
+<section id="slide-orgde2563d">
+<h2 id="orgde2563d"><span class="section-number-2">2.</span> 多项式回归</h2>
+<p>
+\[
+f_{\vec{w},b}(x)=w_{1}x+w_{2}x^{2}+w_{3}x^{3}+b
+\]
+</p>
+</section>
+</section>
+<section>
+<section id="slide-org821864e">
+<h2 id="org821864e"><span class="section-number-2">3.</span> 分类模型</h2>
+<p>
+对于分类问题，回答yes no就行。线性回归的就不太好用了，相比之下(sigmoid function)logistic function就挺好用的。 
+</p>
+</section>
+<section id="slide-org1428624">
+<h3 id="org1428624"><span class="section-number-3">3.1.</span> 逻辑（logistic）回归</h3>
+<p>
+(sigmoid function)logistic function:
+\[
+g(z)=\frac{1}{1+e^{-z}}
+\]
+</p>
+
+<p>
+\[
+0<g(z)<1
+\]
+</p>
+
+<p>
+\[
+f_{\vec{w},b}(\vec{\mathrm{x}})=g(\underbrace{\vec{w}\cdot\vec{\mathrm{x}}+b}_{\vec{z}})=\frac{1}{1+e^{-(\vec{w}\cdot\vec{\mathrm{x}}+b)}}
+\]
+</p>
+</section>
+<section id="slide-org83d2351">
+<h4 id="org83d2351"><span class="section-number-4">3.1.1.</span> 决策边界</h4>
+<p>
+决策边界就是
+\[
+\vec{z}=\vec{w}\cdot\vec{\mathrm{x}}+b
+\]
+</p>
+
+<p>
+非线性的决策边界就可以用多项式回归
+</p>
+</section>
+<section id="slide-orgce209e0">
+<h4 id="orgce209e0"><span class="section-number-4">3.1.2.</span> 逻辑函数的代价函数</h4>
+<p>
+平方差函数不是个好的选择因为它使用梯度下降会容易陷入局部最小值。
+</p>
+
+<p>
+\[
+L\left(f_{\vec{w},b}\left(\vec{x}^{(i)}\right),y^{(i)}\right)= \begin{cases} -\log\left(f_{\vec{w},b}\left(\vec{x}^{(i)}\right)\right) & \mathrm{if}y^{(i)}=1 \\ -\log\left(1-f_{\vec{w},b}\left(\vec{x}^{(i)}\right)\right) & \mathrm{if}y^{(i)}=0 & \end{cases}
+\]
+</p>
+
+<p>
+代价函数的简化版本
+</p>
+
+<p>
+\[
+\left.L\left(f_{\overline{w},b}\left(\vec{x}^{(i)}\right),y^{(i)}\right)=-y^{(i)}\mathrm{log}\left(f_{\overline{w},b}\left(\vec{x}^{(i)}\right)\right)-(1-y^{(i)}\right)\mathrm{log}\left(1-f_{\overline{w},b}\left(\vec{x}^{(i)}\right)\right)
+\]
+</p>
+</section>
+<section id="slide-orgf2b3d6b">
+<h4 id="orgf2b3d6b"><span class="section-number-4">3.1.3.</span> 梯度下降的方法跟线性回归的一样</h4>
+
+</section>
+<section id="slide-orgbbc65f5">
+<h4 id="orgbbc65f5"><span class="section-number-4">3.1.4.</span> 过拟合如何解决</h4>
+<p>
+获取更多的数据
+</p>
+<ol class="org-ol">
+<li><a id="orgf148b67"></a>正则化<br />
+<p>
+修改损失函数：
+</p>
+
+<p>
+\[
+J(\vec{\mathbf{w}},b)=\quad\frac{1}{2m}\sum_{i=1}^{m}\left(f_{\vec{\mathbf{w}},b}\left(\vec{\mathbf{x}}^{(i)}\right)-y^{(i)}\right)^{2}+\frac{\lambda}{2m}\sum_{j=1}^{n}w_{j}^{2}
+\]
+</p>
+</li>
+<li><a id="org1e9ff6d"></a>正则化线性回归<br />
+<p>
+$$
+</p>
+<div>
+\begin{gathered} w_{j}=w_{j}-\alpha\left[\frac{1}{m}\sum_{i=1}^{m}\left[\left(f_{\vec{w},b}\left(\vec{x}^{(i)}\right)-y^{(i)}\right)x_{j}^{(i)}\right]+\frac{\lambda}{m}w_{j}\right] \\ b=b-\alpha\frac{1}{m}\sum_{i=1}^{m}\left(f_{\overrightarrow{w},b}\left(\vec{\mathrm{x}}^{(i)}\right)-y^{(i)}\right) \end{gathered}
+
+</div>
+<p>
+$$
+</p>
+</li>
+<li><a id="org4167532"></a>正则化logistic回归<br />
+<p>
+\[
+J(\vec{\mathrm{w}},b)=-\frac{1}{m}\sum_{i=1}^{m}\left[y^{(i)}\mathrm{log}\left(f_{\vec{\mathrm{w}},b}(\vec{\mathrm{x}}^{(i)})\right)+\left(1-y^{(i)}\right)\mathrm{log}\left(1-f_{\vec{\mathrm{w}},b}(\vec{\mathrm{x}}^{(i)})\right)\right]+\frac{\lambda}{2m}\sum_{j=1}^{n}w_{j}^{2}
+\]
+</p>
+</li>
+</ol>
+</section>
+</section>
+<section>
+<section id="slide-orgdf00212">
+<h2 id="orgdf00212"><span class="section-number-2">4.</span> 神经网络</h2>
+<p>
+中间的都叫隐藏层
+</p>
+
+<p>
+选特征（维度）-&gt; 特征会组合成另外的某些特征 -&gt; &#x2026; -&gt; 输出
+</p>
+
+<p>
+组合过程可用线性拟合模型理解。
+</p>
+</section>
+<section id="slide-orga48459a">
+<h3 id="orga48459a"><span class="section-number-3">4.1.</span> 推理：前向传播</h3>
+<p>
+就是从第一层开始顺序计算每一层的w，b
+</p>
+
+<p>
+代码实现
+</p>
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim>
+<span style="color: #fcaf3e;">x</span> = np.array([[200,17]]) <span style="color: #73d216;">#</span><span style="color: #73d216;">&#25968;&#25454;&#30690;&#37327;&#21270;</span>
+<span style="color: #fcaf3e;">layer1</span> = Dense(units=3, activation=<span style="color: #e9b96e;">'sigmoid'</span>) <span style="color: #73d216;">#</span><span style="color: #73d216;">&#26500;&#24314;&#31070;&#32463;&#32593;&#32476;&#30340;&#31532;&#19968;&#20010;&#38544;&#34255;&#23618;&#65292;units&#20195;&#34920;&#26377;&#20960;&#20010;&#31070;&#32463;&#20803;</span>
+<span style="color: #fcaf3e;">a1</span> = layer1(x) <span style="color: #73d216;">#</span><span style="color: #73d216;">a1&#26159;&#24352;&#37327;&#25968;&#25454;&#31867;&#22411;&#65292;tf&#20869;&#37096;&#29420;&#26377;&#30340;tf.Tensor([[0.2 0.7 0.311, shape=(1, 3), dtype=float32) , a1.numpy()</span>
+
+<span style="color: #fcaf3e;">layer2</span> = Dense(units=1, activation=<span style="color: #e9b96e;">'sigmoid'</span>) <span style="color: #73d216;">#</span><span style="color: #73d216;">&#26500;&#24314;&#31070;&#32463;&#32593;&#32476;&#30340;&#36755;&#20986;&#23618;</span>
+<span style="color: #fcaf3e;">a2</span> = layer1(a1)
+
+<span style="color: #73d216;">#</span><span style="color: #73d216;">&#26356;&#31616;&#21333;&#30340;&#20889;&#27861;</span>
+<span style="color: #fcaf3e;">layer1</span> = Dense(units=3, activation=<span style="color: #e9b96e;">'sigmoid'</span>)
+<span style="color: #fcaf3e;">layer2</span> = Dense(units=1, activation=<span style="color: #e9b96e;">'sigmoid'</span>)
+
+<span style="color: #fcaf3e;">model</span> = Sequential([layer1, layer2])
+
+<span style="color: #fcaf3e;">x</span> = np.array([[],
+            []])
+<span style="color: #fcaf3e;">y</span> = np.array([])
+
+model.<span style="color: #e090d7;">compile</span>(...)
+model.fit(x,y)
+model.predict(x_new)
+</code></pre>
+</div>
+
+<p>
+单层前向传播
+</p>
+
+<p>
+\[
+a^1_{1} = g(\vec{{w^1}_1} \cdot \vec{x} + {b^1}_1)
+\]
+</p>
+
+<p>
+layer2 = Dense(units=1, activation='sigmoid')
+</p>
+
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim>
+<span style="color: #fcaf3e;">model</span> = Sequential([layer1, layer2])
+
+<span style="color: #fcaf3e;">x</span> = np.array([[],
+            []])
+<span style="color: #fcaf3e;">y</span> = np.array([])
+
+model.<span style="color: #e090d7;">compile</span>(...)
+model.fit(x,y)
+model.predict(x_new)
+
+</code></pre>
+</div>
+
+<p>
+单层前向传播
+</p>
+
+<p>
+\[
+{a^1}_{1} = g(\vec{{w^1}_1} \cdot \vec{x} + {b^1}_1)
+\]
+</p>
+
+<p>
+\[
+{a^2}_{1} = g(\vec{{w^2}_1} \cdot \vec{x} + {b^2}_1)
+\]
+</p>
+
+<p>
+\[
+{a^3}_{1} = g(\vec{{w^3}_1} \cdot \vec{x} + {b^3}_1)
+\]
+</p>
+
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #73d216;">#</span><span style="color: #73d216;">&#27599;&#20010;&#31070;&#32463;&#20803;&#30340;&#32454;&#33410;</span>
+<span style="color: #fcaf3e;">w1_1</span> = np.array([1,2])
+<span style="color: #fcaf3e;">b1_1</span> = np.array([-1])
+<span style="color: #fcaf3e;">z1_1</span> = np.dot(w1_1, x) + b1_1
+<span style="color: #fcaf3e;">a1_1</span> = sigmoid(z1_1)
+
+<span style="color: #fcaf3e;">w1_2</span> = np.array([-3,4])
+<span style="color: #fcaf3e;">b1_2</span> = np.array([-1])
+<span style="color: #fcaf3e;">z1_2</span> = np.dot(w1_2, x) + b1_2
+<span style="color: #fcaf3e;">a1_2</span> = sigmoid(z1_2)
+
+<span style="color: #fcaf3e;">w1_3</span> = np.array([5,-6])
+<span style="color: #fcaf3e;">b1_3</span> = np.array([-1])
+<span style="color: #fcaf3e;">z1_3</span> = np.dot(w1_3, x) + b1_3
+<span style="color: #fcaf3e;">a1_3</span> = sigmoid(z1_3)
+</code></pre>
+</div>
+
+<p>
+通用实现：
+</p>
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #b4fa70;">def</span> <span style="color: #fce94f;">dense</span>(a_in, w, b):
+    <span style="color: #fcaf3e;">units</span> = w.shape[1]
+    <span style="color: #fcaf3e;">a_out</span> = np.zeros(units)
+    <span style="color: #b4fa70;">for</span> j <span style="color: #b4fa70;">in</span> <span style="color: #e090d7;">range</span>(units):
+        <span style="color: #fcaf3e;">w</span>=W&#65339;:&#65292;j&#65341;
+        <span style="color: #fcaf3e;">z</span> = np.dot(w,a_in) + b[j]
+        <span style="color: #fcaf3e;">a_out</span>[j] = g(z)
+    <span style="color: #b4fa70;">return</span> a_out
+
+<span style="color: #b4fa70;">def</span> <span style="color: #fce94f;">sequential</span>(x):
+    <span style="color: #fcaf3e;">a1</span> = dense(x,W1, b1)
+    <span style="color: #fcaf3e;">a2</span> = dense(a1, W2, b2)
+    <span style="color: #fcaf3e;">a3</span> = dense (a2, W3, b3)
+    <span style="color: #fcaf3e;">a4</span> = dense(a3, W4,b4)
+    <span style="color: #fcaf3e;">f_x</span> = a4
+    <span style="color: #b4fa70;">return</span> f_x
+
+<span style="color: #73d216;">#</span><span style="color: #73d216;">&#30697;&#38453;&#23454;&#29616;</span>
+<span style="color: #b4fa70;">def</span> <span style="color: #fce94f;">dense</span>(A_in, W,B) :
+    <span style="color: #fcaf3e;">Z</span> = np.matmul(A_in,W) + B
+    <span style="color: #fcaf3e;">A_out</span> = g(Z)
+    <span style="color: #b4fa70;">return</span> A_out
+
+<span style="color: #73d216;">## </span><span style="color: #73d216;">tf&#23454;&#29616;&#31070;&#32463;&#32593;&#32476;</span>
+<span style="color: #b4fa70;">import</span> tensorflow <span style="color: #b4fa70;">as</span> tf
+<span style="color: #b4fa70;">from</span> tensorflow.keras <span style="color: #b4fa70;">import</span> Sequential
+<span style="color: #b4fa70;">from</span> tensorflow.keras.layers <span style="color: #b4fa70;">import</span> Dense
+<span style="color: #fcaf3e;">model</span> = Sequential([
+    Dense (units=25, activation=<span style="color: #e9b96e;">'sigmoid'</span>),
+    Dense (units=15, activation=<span style="color: #e9b96e;">'sigmoid'</span>),
+    Dense (units=1, activation=<span style="color: #e9b96e;">'sigmoid'</span>), <span style="color: #73d216;">#</span><span style="color: #73d216;">&#28608;&#27963;&#20989;&#25968;&#36824;&#21487;&#20197;&#29992;linear&#65292;relu</span>
+])
+<span style="color: #b4fa70;">from</span> tensorflow.keras.losses <span style="color: #b4fa70;">import</span> BinaryCrossentropy,
+model.<span style="color: #e090d7;">compile</span>(loss=BinaryCrossentropy()) <span style="color: #73d216;">#</span><span style="color: #73d216;">&#35774;&#32622;&#25439;&#22833;&#20989;&#25968;&#36824;&#21487;&#20197;&#29992;MeanSquaredError()</span>
+model.fit(X, Y, epochs=100) <span style="color: #73d216;">#</span><span style="color: #73d216;">&#36845;&#20195;&#27425;&#25968;</span>
+
+</code></pre>
+</div>
+
+<p>
+关于激活函数的选择：对于输出层二分类问题sigmoid最自然的选择，如果Y可以取正值和负值使用线性激活，如果Y只能取正使用relu。隐藏层Relu是最常见的选择。
+</p>
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #b4fa70;">from</span> tf. keras. layers <span style="color: #b4fa70;">import</span> Dense
+<span style="color: #fcaf3e;">model</span> = Sequential([
+    Dense(units=25, activation=<span style="color: #e9b96e;">'relu'</span>),
+    Dense(units=15, activation=<span style="color: #e9b96e;">'relu'</span>),
+    Dense(units=1, activation=<span style="color: #e9b96e;">'sigmoid'</span>)
+])
+
+</code></pre>
+</div>
+</section>
+</section>
+<section>
+<section id="slide-org023d29a">
+<h2 id="org023d29a"><span class="section-number-2">5.</span> 多类别</h2>
+<div class="outline-text-2" id="text-5">
+</div>
+</section>
+<section id="slide-orge7d1090">
+<h3 id="orge7d1090"><span class="section-number-3">5.1.</span> softmax</h3>
+<p>
+softmax回归算法是逻辑回归的繁泛化，罗辑回归是一种二分类算法。适用于多种场景。
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{aligned} a_{1} & =\frac{e^{z_{1}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=1|\vec{\mathrm{x}}) \end{aligned}
+
+</div>
+<p>
+$$
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{aligned} a_{2} & =\frac{e^{z_{2}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=2|\vec{\mathrm{x}}) \end{aligned}
+
+</div>
+<p>
+$$
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{aligned} a_{3} & =\frac{e^{z_{3}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=3|\vec{\mathrm{x}}) \end{aligned}
+
+</div>
+<p>
+$$
+</p>
+
+<p>
+$$
+</p>
+<div>
+\begin{aligned} a_{4} & =\frac{e^{z_{4}}}{e^{z_{1}}+e^{z_{2}}+e^{z_{3}}+e^{z_{4}}} \\ & =P(y=4|\vec{\mathrm{x}}) \end{aligned}
+
+</div>
+<p>
+$$
+</p>
+
+<p>
+损失函数：
+</p>
+
+<p>
+逻辑回归的损失函数：
+\[
+loss=-y\log a_1-(1-y)\log(1-a_1)
+\]
+</p>
+
+<p>
+softmax的损失函数：
+\[
+loss(a_1,...,a_N,y)= \begin{cases} -\log a_1 & \mathrm{if}y=1 \\ -\log a_2 & \mathrm{if}y=2 \\ \vdots \\ -\log a_N & \mathrm{if}y=N & \end{cases}
+\]
+</p>
+
+<div class="org-src-container">
+
+<pre  class="src src-python"   ><code trim><span style="color: #b4fa70;">import</span> tensorflow <span style="color: #b4fa70;">as</span> tf <span style="color: #b4fa70;">from</span> tensorflow.keras
+<span style="color: #b4fa70;">import</span> Sequential
+<span style="color: #b4fa70;">from</span> tensorflow. keras. layers <span style="color: #b4fa70;">import</span> Dense
+
+<span style="color: #fcaf3e;">model</span> = Sequential([
+    Dense (units=25, activation=<span style="color: #e9b96e;">'relu'</span>),
+    Dense (units=15, activation=<span style="color: #e9b96e;">'relu'</span>),
+    Dense (units=10, activation=<span style="color: #e9b96e;">'softmax'</span>)
+])
+<span style="color: #b4fa70;">from</span> tensorflow. keras.losses <span style="color: #b4fa70;">import</span> SparseCategoricalCrossentropy
+model.<span style="color: #e090d7;">compile</span> (loss = SparseCategoricalCrossentropy())
+
+</code></pre>
+</div>
+</section>
+<section id="slide-org274b6bf">
+<h4 id="org274b6bf"><span class="section-number-4">5.1.1.</span> 高级优化</h4>
+<p>
+Adam 学习率调整
+</p>
+</section>
+</section>
+<section>
+<section id="slide-org23ff565">
+<h2 id="org23ff565"><span class="section-number-2">6.</span> 决策树模型</h2>
+<p>
+测量纯度：使用熵这个工具
+</p>
+
+<p>
+熵的减少即是信息增益，选择按那种方式分割样本很重要，选择信息增益最高的方式分割。
+</p>
+
+<p>
+独热编码：如果一个特征有k个取值，那么我们用k个二元特征替换它。这些二院特征总有一个取1，这个便是独热编码。
+</p>
+
+<p>
+回归树：
+</p>
+
+<p>
+使用多个决策树：
+</p>
+
+<p>
+随机森林
+</p>
+
+<p>
+何时使用：
+</p>
+
+<p>
+决策树和树系综
+</p>
+
+<p>
+• 适用于表格 （结构化） 数据
+</p>
+
+<p>
+• 不建议用于非结构化数据（图像、音频、文本）
+</p>
+
+<p>
+• 快
+</p>
+
+<p>
+• 小决策树是人类可解释的
+</p>
+
+<p>
+神经网络
+</p>
+
+<p>
+• 适用于所有类型的数据，包括表格（结构化）和非结构化数据
+</p>
+
+<p>
+• 可能比决策树慢
+</p>
+
+<p>
+• 与迁移学习配合使用
+</p>
+
+<p>
+• 当构建一个由多个模型协同工作的系统时将多个神经网络连接起来可能更容易，可以使用梯度下降一起训练。
+</p>
+</section>
+</section>
+<section>
+<section id="slide-org77fa21d">
+<h2 id="org77fa21d"><span class="section-number-2">7.</span> 聚类(Clustering)</h2>
+<p>
+聚类算法会查看一组数据，并自动找出相互关联或相似的数据点
+</p>
+</section>
+<section id="slide-org506a894">
+<h3 id="org506a894"><span class="section-number-3">7.1.</span> k-均值聚类算法</h3>
+<div class="outline-text-3" id="text-7-1">
+</div>
+</section>
+<section id="slide-org7b66cf5">
+<h4 id="org7b66cf5"><span class="section-number-4">7.1.1.</span> 算法细节：</h4>
+<p>
+第一步随机选择两个点，作为两个不同聚类的中心位置，
+</p>
+
+<p>
+将点分配给聚类中心，移动聚类中心：遍历每个点，看看它是更接近哪一个，根据每个点更接近哪个聚类中心来分配这些点。将点分配给聚类中心。移动聚类中心。
+</p>
+
+<p>
+然后迭代
+</p>
+</section>
+<section id="slide-orgb09e4c1">
+<h4 id="orgb09e4c1"><span class="section-number-4">7.1.2.</span> 损失函数：</h4>
+<p>
+\(c^{(i)}\) = 分配到某个聚类(1,2,&#x2026;,k)中的某个$x^{(i)}$索引
+\({\mu}_k\) = 聚类k的中心
+\({{\mu}_{c}^{(i)}}\) = 被分配的$x^{(i)}$的 $c^{(i)}$聚类中心的位置
+</p>
+
+<p>
+损失函数：
+\(J\left(c^{(1)},...,c^{(m)},\mu_1,...,\mu_K\right)=\frac{1}{m}\sum_{i=1}^m\|x^{(i)}-\mu_c^{(i)}\|^2\)
+</p>
+</section>
+<section id="slide-org6b61a54">
+<h4 id="org6b61a54"><span class="section-number-4">7.1.3.</span> k的值</h4>
+<p>
+Elbow方法：通过代价函数的变化
+</p>
+</section>
+</section>
+<section>
+<section id="slide-org0168376">
+<h2 id="org0168376"><span class="section-number-2">8.</span> 深度学习的神经网络</h2>
+<p>
+神经网络种类很多：
+</p>
+
+<p>
+卷积神经网络(Convolutional neural network) 擅长图像识别
+长短期记忆网络(Long short-term memory network) 擅长语音识别
+</p>
+
+<p>
+经典原版的多层感知器MLP("multilayer perceptron"):
+</p>
+
+<p>
+以识别图片数字的为例：
+</p>
+
+<p>
+输入层每个神经元中都有一个激活值（0-1之间），代表着像素的灰度值
+最后一层的神经元激活值，对应哪个数字的可能性。
+隐藏层暂时认为是一个黑箱（两层的隐藏层，每层16个神经元）。上一层的激活值会决定下一层的激活值。
+识别工作都被拆成小块，
+假设输入层有784（28*28的像素）个神经元，那么隐藏层每个神经元各带784个权重w，每个还带一个偏置b，那么权重和偏置共有784*16+16*16+16*10 + 16+16+10，共13002个。相当于有这些个旋钮开关可控制。我们谈论机器学习的时候就是在讲电脑如何设置这些的数字参数，即找到合适的权重和偏置。
+</p>
+
+<p>
+\[
+a_0^{(1)}=\sigma\left(w_{0,0}a_0^{(0)}+w_{0,1}a_1^{(0)}+\cdots+w_{0,n}a_n^{(0)}+b_0\right)
+\]
+</p>
+
+<p>
+\[
+\mathbf{a}^{(1)}=\sigma\left(\mathbf{W}\mathbf{a}^{(0)}+\mathbf{b}\right)
+\]
+</p>
+
+<p>
+\[
+\boldsymbol{\sigma}\left( \begin{bmatrix} w_{0,0} & w_{0,1} & \ldots & w_{0,n} \\ w_{1,0} & w_{1,1} & \ldots & w_{1,n} \\ \vdots & \vdots & \ddots & \vdots \\ w_{k,0} & w_{k,1} & \ldots & w_{k,n} \end{bmatrix} \begin{bmatrix} a_0^{(0)} \\ a_1^{(0)} \\ \vdots \\ a_n^{(0)} \end{bmatrix}+ \begin{bmatrix} b_0 \\ b_1 \\ \vdots \\ b_k \end{bmatrix}\right)
+\]
+</p>
+
+<p>
+Network即是函数
+</p>
+</section>
+<section id="slide-orgc367f86">
+<h3 id="orgc367f86"><span class="section-number-3">8.1.</span> 激活函数：</h3>
+<p>
+线性整流函数Rectified linear unit（ReLU）
+</p>
+
+<p>
+Sigmoid
+</p>
+</section>
+<section id="slide-org44a6cea">
+<h3 id="org44a6cea"><span class="section-number-3">8.2.</span> 梯度下降</h3>
+<p>
+损失函数（cost function）:每一项差的平方。
+</p>
+
+<p>
+输入： 13002个w，b
+ouput： 1 数字 the cost
+参数：大量的的训练数据
+</p>
+
+<p>
+计算梯度的过程就是反向传播,单个训练样本怎样修改权重与偏置，不止说明这个权重该变大还是变小，还包括这些变化的比例是多大，才能更快的降低损失函数。
+</p>
+</section>
+</section>
+<section>
+<section id="slide-org5cb32f1">
+<h2 id="org5cb32f1"><span class="section-number-2">9.</span> GPT</h2>
+<div class="outline-text-2" id="text-9">
+</div>
+</section>
+<section id="slide-orgc12a3a4">
+<h3 id="orgc12a3a4"><span class="section-number-3">9.1.</span> Transformer</h3>
+<p>
+嵌入向量（embedding vector）:
+维度
+token
+参数
+</p>
+</section>
+<section id="slide-org4f8422c">
+<h3 id="org4f8422c"><span class="section-number-3">9.2.</span> 注意力机制</h3>
+<p>
+《Attention Is All You Need》
+</p>
+</section>
+<section id="slide-org7e2ac01">
+<h3 id="org7e2ac01"><span class="section-number-3">9.3.</span> 多层感知器</h3>
+</section>
+</section>
+</div>
+</div>
+<script src="./reveal.js/js/reveal.js"></script>
+
+<script>
+// Full list of configuration options available here:
+// https://github.com/hakimel/reveal.js#configuration
+Reveal.initialize({
+
+// Optional libraries used to extend on reveal.js
+dependencies: [
+ { src: './reveal.js/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: './reveal.js/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: './reveal.js/plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+ { src: './reveal.js/plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }]
+
+});
+
+</script>
+</body>
+</html>
