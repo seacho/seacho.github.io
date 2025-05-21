@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html class="no-js">
+	<head>
+	<meta charset="utf-8">
+
+	
+
+	<title>aliyunctf2025 | kaka</title>
+	
+	<meta name="description" content="记录下从2025 aliyunctf中学到的新东西：">
+	
+
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<!-- CSS -->
+	<link rel="stylesheet" href="/css/main.css">
+
+	<!--Favicon-->
+	<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+
+	<!-- Canonical -->
+	<link rel="canonical" href="http://localhost:4000/2025/02/aliyunctf2025/">
+
+	<!-- RSS -->
+	<link rel="alternate" type="application/atom+xml" title="kaka" href="http://localhost:4000/feed.xml">
+
+	<!-- Font Awesome -->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+	
+
+	
+</head>
+
+	<body>
+		<header class="site-header">
+	
+	<h1 class="site-title">
+		<a href="/">kaka</a>
+	</h1>
+	<div class="space padding"></div>
+	<nav class="site-navigation">
+		<ul>
+			
+			
+			
+			
+			
+			
+			<li>
+				<a class="page-link" href="/about/">
+					About
+				</a>
+			</li>
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+
+<li>
+	<a href="/feed.xml" title="RSS feed">
+			<i class="fa fa-fw fa-rss"></i>
+	</a>
+</li>
+
+
+
+<li>
+	<a href="https://github.com/seacho" title="Github">
+			<i class="fa fa-fw fa-github"></i>
+	</a>
+</li>
+
+
+
+<li>
+	<a href="mailto:assdfgzxcv4@gmail.com" title="Email">
+			<i class="fa fa-fw fa-envelope"></i>
+	</a>
+</li>
+
+
+
+		</ul>
+	</nav>
+</header>
+
+		<div class="content">
+			<article class="post">
+	<header>
+		<h1 class="title">aliyunctf2025</h1>
+		<p class="byline-dateline">
+	
+	<span class="dateline">February 27, 2025</span>
+</p>
+
+
+	</header>
+	<section class="post-content"><p>记录下从2025 aliyunctf中学到的新东西：</p>
+
+<!--more-->
+
+<h2 id="pwn1---beebee学习ebpf的exploit">pwn1 - beebee：学习eBPF的exploit</h2>
+
+<p>通过这个题目学习下eBPF安全方面内容。</p>
+
+<p>eBPF(extended Berkeley Packet Filter)，是一个基于寄存器的虚拟机，使用自定义的64位RISC指令集，能够在linux内核中运行JIT原生编译的BPF程序，并访问内核功能和内存的子集。它是主线内核的一部分，不需要像其他框架那样( LTTng or SystemTap)的第三方模块，并且在所有的linux发行版中都默认启用。
+在内核内运行完整虚拟机的目的主要是为了便利和安全，虽然eBPF可以完成的操作都可以通过普通内核模块处理，但是直接内核编程是很危险的，可能会造成整个系统的崩溃。因此通过虚拟机运行字节码对安全监控，沙盒，网络过滤，程序跟踪，分析，调试等很有价值。<a href="https://www.brendangregg.com/ebpf.html">ex</a></p>
+
+<p>eBPF VM的设计不允许循环，因此可以保证每个eBPF程序都能执行完，不会有死循环的情况，而且所有的内存访问都是有边界检查和属性检查的。eBPF刚开始只用于过滤网络数据包。从linux-3.18开始，虚拟机就可以通过bpf()系统调用与用户层交互，当时存在的指令集成为公共ABI，后面仍然可以添加新指令。</p>
+
+<p>eBPF的运行原理：</p>
+
+<ol>
+  <li>用户空间的程序发送bytecode（eBPF VM字节码）到内核中。</li>
+  <li>内核会对eBPF程序进行一次检查（kernel/bpf/verifier.c）。</li>
+  <li>内核将字节码使用JIT机制 编译为机器码，并将附加到指定的位置。</li>
+  <li>插入的代码将数据写入ringbuffers或key-value maps。</li>
+  <li>用户空间从共享maps或ringbuffers中读取结果。
+（ringbuffers和maps由内核管理，独立于程序。需要通过文件描述符异步访问。）</li>
+</ol>
+
+<p>事件可以从kprobes/uprobes、tracepoints、dtrace probes、sockets等中生成。当事件发生时，eBPF程序由内核运行，可以理解为一种函数挂钩或者事件驱动编程。这允许在内核和用户进程中的任何指令上连接和检查任何功能中的内存，拦截文件操作，检查特定的网络数据包等。</p>
+
+<p>用户层编写程序可以通过libbpf库，其中包含bpf_load_program等syscall函数的包装器和一些数据结构的定义。linux源码的samples/bpf/目录下有很多使用示例。</p>
+
+<p>eBPF架构设计：</p>
+
+<p>cBPF是32位架构，但eBPF是 64 位架构，</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>BPF寄存器</th>
+      <th>对应的x64寄存器</th>
+      <th>作用</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R0</td>
+      <td>rax</td>
+      <td>函数调用结束储存返回值，当前程序推退出码</td>
+    </tr>
+    <tr>
+      <td>R1</td>
+      <td>rdi</td>
+      <td>作为函数调用参数使用，</td>
+    </tr>
+    <tr>
+      <td>R2</td>
+      <td>rsi</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R3</td>
+      <td>rdx</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R4</td>
+      <td>rcx</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R5</td>
+      <td>r8</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R6</td>
+      <td>rbx</td>
+      <td>被保留函数内部使用</td>
+    </tr>
+    <tr>
+      <td>R7</td>
+      <td>r13</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R8</td>
+      <td>r14</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R9</td>
+      <td>r15</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>R10</td>
+      <td>rbp</td>
+      <td>只读寄存器，指向512byte大小的栈空间</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>每个函数调用在寄存器r1-r5中最多可以有5个参数；寄存器r1-r5只能存储堆栈的数字或指针（作为参数传递给函数），永远不会将指针指向任意内存。所有内存访问必须先将数据加载到eBPF堆栈，然后再在eBPF程序中使用。此限制有助于eBPF验证器，简化内存模型。</p>
+
+<p>指令集：</p>
+
+<p>普通用户的BPF程序，最多可以使用4096个指令。root用户的话，最多可以加载100万个指令。因为BPF是RISC架构，所以指令是定长的64位</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>比特</th>
+      <th>名字</th>
+      <th>意义</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0-7</td>
+      <td>op</td>
+      <td>操作码</td>
+    </tr>
+    <tr>
+      <td>8-11</td>
+      <td>dst_reg</td>
+      <td>目的寄存器</td>
+    </tr>
+    <tr>
+      <td>12-15</td>
+      <td>src_reg</td>
+      <td>源寄存器</td>
+    </tr>
+    <tr>
+      <td>16-31</td>
+      <td>off</td>
+      <td>偏移</td>
+    </tr>
+    <tr>
+      <td>32-63</td>
+      <td>imm</td>
+      <td>立即数</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>程序类型：</p>
+
+<p>在加载时需要指定BPF程序的用途。cBPF中只有2种类型：套接字过滤器和系统调用过滤器，但eBPF提供了20多种类型。
+例如 <code class="language-plaintext highlighter-rouge">BPF_PROG_TYPE_SOCKET_FILTER</code> 是套接字过滤器，根据BPF程序的返回值，可以进行丢弃数据包等操作。这种类型的BPF程序，通过SO_ATTACH_BPF选项调用setsockopt系统调用，可以附加到套接字上。</p>
+
+<p>辅助函数：
+eBPF设计的一套安全的扩展功能的模式。字节码程序能做的事情毕竟有限，这时我们可以通过添加辅助函数来扩展其功能，然后在VM中调用。当然其内部也有很多已经写好的辅助函数，我们可以直接调用。</p>
+
+<p>辅助函数可以通过 <code class="language-plaintext highlighter-rouge">struct bpf_func_proto</code> 结构体描述了自身的定义、入参类型、返回值类型等。验证器可以通过这个结构体描述的信息来检查，传入的参数是否合法。比较复杂的就是指针类型的参数了。指针有类型信息，范围信息，访问权限信息，对齐信息……</p>
+
+<p>普通用户是否可以使用bpf有个开关。可以通过/proc/sys/kernel/unprivileged_bpf_disabled控制。</p>
+
+<p>关于开发的学习资源：</p>
+
+<p>(<a href="https://www.collabora.com/news-and-blog/blog/2019/04/05/an-ebpf-overview-part-1-introduction/">https://www.collabora.com/news-and-blog/blog/2019/04/05/an-ebpf-overview-part-1-introduction/</a>)</p>
+
+<p>(<a href="https://mem2019.github.io/jekyll/update/2021/07/19/GCTF2021-eBPF.html">https://mem2019.github.io/jekyll/update/2021/07/19/GCTF2021-eBPF.html</a>)</p>
+
+<p>(<a href="https://stdnoerr.github.io/writeup/2022/08/21/eBPF-exploitation-(ft.-D-3CTF-d3bpf).html">https://stdnoerr.github.io/writeup/2022/08/21/eBPF-exploitation-(ft.-D-3CTF-d3bpf).html</a>)</p>
+
+<p>(<a href="https://www.brendangregg.com/ebpf.html">https://www.brendangregg.com/ebpf.html</a>)</p>
+
+<p>(<a href="https://www.brendangregg.com/blog/2018-10-08/dtrace-for-linux-2018.html">https://www.brendangregg.com/blog/2018-10-08/dtrace-for-linux-2018.html</a>)</p>
+
+<p>(<a href="https://guide.996station.com/#/ebpf-guide/eBPF基础/计算机领域最有前途基础软件技术eBPF">https://guide.996station.com/#/ebpf-guide/eBPF基础/计算机领域最有前途基础软件技术eBPF</a>)</p>
+
+<p>介绍了这么多，来看看这个题目：</p>
+
+<p>先看patch文件:</p>
+
+<pre><code class="language-C">
+diff --color -ruN origin/include/linux/bpf.h aliyunctf/include/linux/bpf.h
+--- origin/include/linux/bpf.h	2025-01-23 10:21:19.000000000 -0600
++++ aliyunctf/include/linux/bpf.h	2025-01-24 03:44:01.494468038 -0600
+@@ -3058,6 +3058,7 @@
+ extern const struct bpf_func_proto bpf_user_ringbuf_drain_proto;
+ extern const struct bpf_func_proto bpf_cgrp_storage_get_proto;
+ extern const struct bpf_func_proto bpf_cgrp_storage_delete_proto;
++extern const struct bpf_func_proto bpf_aliyunctf_xor_proto;
+
+ const struct bpf_func_proto *tracing_prog_func_proto(
+   enum bpf_func_id func_id, const struct bpf_prog *prog);
+diff --color -ruN origin/include/uapi/linux/bpf.h aliyunctf/include/uapi/linux/bpf.h
+--- origin/include/uapi/linux/bpf.h	2025-01-23 10:21:19.000000000 -0600
++++ aliyunctf/include/uapi/linux/bpf.h	2025-01-24 03:44:11.814636836 -0600
+@@ -5881,6 +5881,7 @@
+        FN(user_ringbuf_drain, 209, ##ctx)		\
+        FN(cgrp_storage_get, 210, ##ctx)		\
+        FN(cgrp_storage_delete, 211, ##ctx)		\
++	FN(aliyunctf_xor, 212, ##ctx)		\
+        /* */
+
+ /* backwards-compatibility macros for users of __BPF_FUNC_MAPPER that don't
+diff --color -ruN origin/kernel/bpf/helpers.c aliyunctf/kernel/bpf/helpers.c
+--- origin/kernel/bpf/helpers.c	2025-01-23 10:21:19.000000000 -0600
++++ aliyunctf/kernel/bpf/helpers.c	2025-01-24 03:44:06.683490095 -0600
+@@ -1745,6 +1745,28 @@
+        .arg3_type	= ARG_CONST_ALLOC_SIZE_OR_ZERO,
+ };
+
++BPF_CALL_3(bpf_aliyunctf_xor, const char *, buf, size_t, buf_len, s64 *, res) {
++	s64 _res = 2025;
++
++	if (buf_len != sizeof(s64))
++		return -EINVAL;
++
++	_res ^= *(s64 *)buf;
++	*res = _res;
++
++	return 0;
++}
++
++const struct bpf_func_proto bpf_aliyunctf_xor_proto = {
++	.func		= bpf_aliyunctf_xor,
++	.gpl_only	= false,
++	.ret_type	= RET_INTEGER,
++	.arg1_type	= ARG_PTR_TO_MEM | MEM_RDONLY,
++	.arg2_type	= ARG_CONST_SIZE,
++	.arg3_type	= ARG_PTR_TO_FIXED_SIZE_MEM | MEM_UNINIT | MEM_ALIGNED | MEM_RDONLY,
++	.arg3_size	= sizeof(s64),
++};
++
+ const struct bpf_func_proto bpf_get_current_task_proto __weak;
+ const struct bpf_func_proto bpf_get_current_task_btf_proto __weak;
+ const struct bpf_func_proto bpf_probe_read_user_proto __weak;
+@@ -1801,6 +1823,8 @@
+                return &amp;bpf_strtol_proto;
+        case BPF_FUNC_strtoul:
+                return &amp;bpf_strtoul_proto;
++	case BPF_FUNC_aliyunctf_xor:
++		return &amp;bpf_aliyunctf_xor_proto;
+        default:
+                break;
+        }
+
+
+</code></pre>
+
+<p>这种题目需要知道eBPF的机制，并且熟悉它的基础设施，才能完成对它的攻击，以前没有遇到过，现在正好根据官方的writeup来学习下这方面的内容。使用的是内核6.6.74版本的源码，新增辅助函数 <code class="language-plaintext highlighter-rouge">bpf_aliyunctf_xor</code> 函数编号212，然后 <code class="language-plaintext highlighter-rouge">bpf_aliyunctf_xor_proto</code> 定义了参数的类型，属性的一些信息，第三个参数是一个指针类型。</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="c">#0  check_mem_access (env=0xffff888004b58000, insn_idx=0x1, regno=0xa, off=0x6, bpf_size=0x18, t=BPF_WRITE, </span>
+    <span class="nv">value_regno</span><span class="o">=</span>&lt;error reading variable: Cannot access memory at address 0x0&gt;, 
+    <span class="nv">strict_alignment_once</span><span class="o">=</span>&lt;error reading variable: Cannot access memory at address 0x8&gt;, 
+    <span class="nv">is_ldsx</span><span class="o">=</span>&lt;error reading variable: Cannot access memory at address 0x10&gt;<span class="o">)</span> at kernel/bpf/verifier.c:6698
+<span class="c">#1  0xffffffff812012a9 in do_check (env=&lt;optimized out&gt;) at kernel/bpf/verifier.c:17179</span>
+<span class="c">#2  do_check_common (env=0xffff888004b58000, subprog=0x0) at kernel/bpf/verifier.c:19643</span>
+<span class="c">#3  0xffffffff812064ba in do_check_main (env=&lt;optimized out&gt;) at kernel/bpf/verifier.c:19706</span>
+<span class="c">#4  bpf_check (prog=0xffff888004b58000, attr=0x1 &lt;fixed_percpu_data+1&gt;, uattr=..., uattr_size=0x18) at kernel/bpf/verifier.c:20333</span>
+<span class="c">#5  0xffffffff811df0c2 in bpf_prog_load (attr=0xffffc9000023fe58, uattr=..., uattr_size=0xfffffff0) at kernel/bpf/syscall.c:2743</span>
+<span class="c">#6  0xffffffff811e196a in __sys_bpf (cmd=0x5, uattr=..., size=0x0) at kernel/bpf/syscall.c:5465</span>
+<span class="c">#7  0xffffffff811e4059 in __do_sys_bpf (size=&lt;optimized out&gt;, uattr=&lt;optimized out&gt;, cmd=&lt;optimized out&gt;) at kernel/bpf/syscall.c:5569</span>
+<span class="c">#8  __se_sys_bpf (size=&lt;optimized out&gt;, uattr=&lt;optimized out&gt;, cmd=&lt;optimized out&gt;) at kernel/bpf/syscall.c:5567</span>
+<span class="c">#9  __x64_sys_bpf (regs=0xffff888004b58000) at kernel/bpf/syscall.c:5567</span>
+<span class="c">#10 0xffffffff81f38d39 in do_syscall_x64 (nr=&lt;optimized out&gt;, regs=&lt;optimized out&gt;) at arch/x86/entry/common.c:51</span>
+<span class="c">#11 do_syscall_64 (regs=0xffffc9000023ff58, nr=0x1) at arch/x86/entry/common.c:81</span>
+<span class="c">#12 0xffffffff82000134 in entry_SYSCALL_64 () at arch/x86/entry/entry_64.S:121</span>
+<span class="c">#13 0x0000000000000000 in ?? ()</span>
+
+</code></pre></div></div>
+
+<p>这里利用了eBPF只在load的时候，对有内存操作的指令进行检查，这里有一个eBPF设计上的细节，就是它的只读权限不是真的只读不可写，而是对于eBPF字节码程序不可写，它是由自己的虚拟机进行内存检查，不是依靠操作系统，但是eBPF设计了辅助函数这个机制，可以在虚拟机中调用c代码，因此如果辅助函数的设计有缺陷，可以去写某些只读区域，而虚拟机字节码如果再次使用了这部分被修改的内存，虚拟机并不会对这个引用这个数据的寄存器进行检查，这是非常危险的。</p>
+
+<p>由于 <code class="language-plaintext highlighter-rouge">bpf_aliyunctf_xor_proto</code> 辅助函数第三个参数有个标识位为 <code class="language-plaintext highlighter-rouge">MEM_RDONLY</code> 表示参数地址可以是只读的。但是在函数实现中，这个内存地址是会被写入一个64位数据的。（刚开始我本来打算直接通过这个函数来修改内核的全局变量，发现不行诶，后来才知道，这些指针传递给辅助函数的时候是有限制的，只能是eBPF内部的某些内存。）因此这里有一种利用方式是： 我们可以利用这个设置来修改只读的maps，只读权限区域可以帮助我们找到一种控制寄存器绕过内存边界检查的方式，我们可以使用 <code class="language-plaintext highlighter-rouge">bpf_skb_load_bytes()</code> 函数来破坏堆栈，覆盖函数ret地址，然后利用rop完成攻击。</p>
+
+<p>官方有<a href="https://xz.aliyun.com/news/17029?time__1311=n4%2BxBDcD0Du7KGKG%3DKDsf3xCqWoxRDmqmK4R5WID&amp;u_atoken=27649aed9882a7bda204f993c159b1a6&amp;u_asig=54d85">writeup</a></p>
+
+<p>官方writeup的攻击流程就是通过向eBPF申请一个只读的map，然后通过新添加的漏洞函数将原来的值改掉，然后把这个值取出来 当 <code class="language-plaintext highlighter-rouge">bpf_skb_load_bytes()</code> 的第四个参数，因为数据是只读的，所以eBPF不会再去检查它的大小，这样就可以造成栈拷贝溢出，控制ret地址。这里还有一个细节就是刚刚进入虚拟机的时候寄存器R1被初始化为指向  <code class="language-plaintext highlighter-rouge">struct __sk_buff</code> 的指针。</p>
+
+<p>但是用 <code class="language-plaintext highlighter-rouge">gcc exploit.c -o exp -static</code> 这种方式编出来的文件很大，当我写了个脚本把数据提取出来后，通过 <code class="language-plaintext highlighter-rouge">echo -e "" &gt; exp</code> 的方式粘贴进虚拟机的时候，不知道为啥我整个测试系统崩了。后来我自己写了一套syscall 调用，来精简exp。使用 <code class="language-plaintext highlighter-rouge">gcc exploit.c -o exp -nostdlib -static</code> 命令来编译，编出来的文件大小不足1M。</p>
+</section>
+</article>
+
+<div class="left-right-navigation">
+	
+	<a class="left" href="/2025/03/linux%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/">
+		<i class="fa fa-chevron-left"></i>
+		<div>Linux内存管理</div>
+	</a>
+	
+	
+	<a class="right" href="/2025/02/Linux-kernel-exploitation/">
+		<div>Linux kernel exploitation</div>
+		<i class="fa fa-chevron-right"></i>
+	</a>
+	
+</div>
+
+
+		</div>
+		<footer class="site-footer">
+	<div>
+		&copy; 2025 p1ain0
+		<span>&middot;</span>
+		Code licensed under <a rel="license" href="https://github.com/bazad/bazad.github.io/blob/master/LICENSE">MIT</a>
+		<span>&middot;</span>
+		Content licensed under <a rel="license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank">CC BY 4.0</a>
+		<span>&middot;</span>
+		<a href="/about-this-site">About this site</a>
+	</div>
+</footer>
+
+		
+	</body>
+</html>

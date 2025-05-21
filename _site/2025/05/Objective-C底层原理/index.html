@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html class="no-js">
+	<head>
+	<meta charset="utf-8">
+
+	
+
+	<title>Objective-C底层原理 | kaka</title>
+	
+	<meta name="description" content="这篇文章说说Objective-C的底层机制，主要是类的内存分布，如何支持一些语言特性，再说说进程启动的时候会有哪些的操作。">
+	
+
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<!-- CSS -->
+	<link rel="stylesheet" href="/css/main.css">
+
+	<!--Favicon-->
+	<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+
+	<!-- Canonical -->
+	<link rel="canonical" href="http://localhost:4000/2025/05/Objective-C%E5%BA%95%E5%B1%82%E5%8E%9F%E7%90%86/">
+
+	<!-- RSS -->
+	<link rel="alternate" type="application/atom+xml" title="kaka" href="http://localhost:4000/feed.xml">
+
+	<!-- Font Awesome -->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+	
+
+	
+</head>
+
+	<body>
+		<header class="site-header">
+	
+	<h1 class="site-title">
+		<a href="/">kaka</a>
+	</h1>
+	<div class="space padding"></div>
+	<nav class="site-navigation">
+		<ul>
+			
+			
+			
+			
+			
+			
+			<li>
+				<a class="page-link" href="/about/">
+					About
+				</a>
+			</li>
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+
+<li>
+	<a href="/feed.xml" title="RSS feed">
+			<i class="fa fa-fw fa-rss"></i>
+	</a>
+</li>
+
+
+
+<li>
+	<a href="https://github.com/seacho" title="Github">
+			<i class="fa fa-fw fa-github"></i>
+	</a>
+</li>
+
+
+
+<li>
+	<a href="mailto:assdfgzxcv4@gmail.com" title="Email">
+			<i class="fa fa-fw fa-envelope"></i>
+	</a>
+</li>
+
+
+
+		</ul>
+	</nav>
+</header>
+
+		<div class="content">
+			<article class="post">
+	<header>
+		<h1 class="title">Objective-C底层原理</h1>
+		<p class="byline-dateline">
+	
+	<span class="dateline">May 21, 2025</span>
+</p>
+
+
+	</header>
+	<section class="post-content"><!--more-->
+
+<p>这篇文章说说Objective-C的底层机制，主要是类的内存分布，如何支持一些语言特性，再说说进程启动的时候会有哪些的操作。</p>
+
+<h2 id="oc底层原理">OC底层原理</h2>
+
+<h3 id="oc类对象本质">OC类对象本质</h3>
+
+<p>oc本质：oc会被编译成C\C++代码，面向对象都是基于C\C++的struct</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>clang <span class="nt">-rewrite-objc</span> main.m <span class="nt">-o</span> main.cpp 
+xcrun <span class="nt">-sdk</span> iphoneos clang <span class="nt">-arch</span> arm64 <span class="nt">-rewrite-objc</span> main.m <span class="nt">-o</span> main.cpp 
+xcrun <span class="nt">-sdk</span> iphoneos clang <span class="nt">-arch</span> arm64 <span class="nt">-rewrite-objc</span> main.m <span class="nt">-S</span> //汇编
+clang <span class="nt">-rewrite-objc</span> <span class="nt">-fobjc-arc</span> <span class="nt">-fobjc-runtime</span><span class="o">=</span>ios-13.0.0 <span class="nt">-isysroot</span> /Applicatons/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator-platform/Developer/SDKs/iPhoneSimulator13.7.sdk main.m
+</code></pre></div></div>
+
+<pre><code class="language-objective-c">@interface NSObject{
+  Class isa;
+}
+@end
+struct NSObject_IMPL{
+  Class isa;
+}
+typedef struct objc_class *Class;
+
+</code></pre>
+
+<h3 id="特殊方法">特殊方法</h3>
+
+<h4 id="alloc-init-new方法">alloc init new方法</h4>
+
+<p>alloc:  开辟内存 16字节对齐</p>
+
+<p>init : return (id)self 构造方法，工厂设计，提供继承重载初始化</p>
+
+<p>new = alloc + init。new不会调用父类的init。</p>
+
+<p>一些hack方法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>class_getInstanceSize(); //    查看类的内存大小
+malloc_size(); //实际分配的内存大小。
+</code></pre></div></div>
+
+<h4 id="load方法">load方法：</h4>
+
+<p>程序启动时就会调用，装载类信息：</p>
+
+<p><code class="language-plaintext highlighter-rouge">_objc_load_image</code>会调用call_load_methods()：先调用类的load然后再去调用分类的load。</p>
+
+<h4 id="initialize方法">initialize方法：</h4>
+
+<p>当类第一次接受到消息时会调用。会先调用父类的initialize。</p>
+
+<p>在callInitialize中。</p>
+
+<h3 id="oc运行时机制">OC运行时机制：</h3>
+
+<h4 id="类对象简介">类对象简介：</h4>
+
+<ul>
+  <li>instance对象（实例对象）：通过alloc出来的对象。
+    <ul>
+      <li>instance对象在内存中保存着成员变量。</li>
+    </ul>
+  </li>
+  <li>class对象（类对象）：
+    <ul>
+      <li>通过实例对象获取Class的两种方法，
+        <ul>
+          <li>Class xxx = [test class];</li>
+          <li>Class xxx = object_getClass(test);</li>
+        </ul>
+      </li>
+      <li>保存的信息：
+        <ul>
+          <li>isa指针</li>
+          <li>类的属性信息(@property)、类的对象方法信息(instance method)</li>
+          <li>类的协议信息(protocol)、类的成员信息(ivar)</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>meta-class对象（元类对象）：
+    <ul>
+      <li>将Class作为参数传进object_getClass获取元类对象。</li>
+      <li>保存的信息：
+        <ul>
+          <li>类方法信息</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<p><strong>-开头方法的放在class中，+开头的放在meta-class中</strong></p>
+
+<p>可以在编译出来后的ida中查看class和meta-class：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">__objc_data:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span> <span class="p">;</span> <span class="n">Segment</span> <span class="n">type</span><span class="o">:</span> <span class="n">Regular</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span> <span class="p">;</span> <span class="n">Segment</span> <span class="n">permissions</span><span class="o">:</span> <span class="n">Read</span><span class="o">/</span><span class="n">Write</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span> <span class="n">__objc_data</span>     <span class="n">segment</span> <span class="n">qword</span> <span class="n">public</span> <span class="err">''</span> <span class="n">use64</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                 <span class="n">assume</span> <span class="n">cs</span><span class="o">:</span><span class="n">__objc_data</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                 <span class="p">;</span><span class="n">org</span> <span class="mi">1000080</span><span class="n">F0h</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                 <span class="n">assume</span> <span class="n">es</span><span class="o">:</span><span class="n">nothing</span><span class="p">,</span> <span class="n">ss</span><span class="o">:</span><span class="n">nothing</span><span class="p">,</span> <span class="n">ds</span><span class="o">:</span><span class="n">nothing</span><span class="p">,</span> <span class="n">fs</span><span class="o">:</span><span class="n">nothing</span><span class="p">,</span> <span class="n">gs</span><span class="o">:</span><span class="n">nothing</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                 <span class="n">public</span> <span class="n">_OBJC_METACLASS_</span><span class="err">$</span><span class="n">_test</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span> <span class="n">_OBJC_METACLASS_</span><span class="err">$</span><span class="n">_test</span> <span class="n">__objc2_class</span> <span class="o">&lt;</span><span class="n">offset</span> <span class="n">_OBJC_METACLASS_</span><span class="err">$</span><span class="n">_NSObject</span><span class="p">,</span> \
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                                         <span class="p">;</span> <span class="n">DATA</span> <span class="n">XREF</span><span class="o">:</span> <span class="n">__objc_data</span><span class="o">:</span><span class="n">_OBJC_CLASS_</span><span class="err">$</span><span class="n">_test</span><span class="err">↓</span><span class="n">o</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                                <span class="n">offset</span> <span class="n">_OBJC_METACLASS_</span><span class="err">$</span><span class="n">_NSObject</span><span class="p">,</span> \
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">80</span><span class="n">F0</span>                                <span class="n">offset</span> <span class="n">__objc_empty_cache</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">offset</span> <span class="n">test_</span><span class="err">$</span><span class="n">metaData</span><span class="o">&gt;</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span>                 <span class="n">public</span> <span class="n">_OBJC_CLASS_</span><span class="err">$</span><span class="n">_test</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span> <span class="n">_OBJC_CLASS_</span><span class="err">$</span><span class="n">_test</span> <span class="n">__objc2_class</span> <span class="o">&lt;</span><span class="n">offset</span> <span class="n">_OBJC_METACLASS_</span><span class="err">$</span><span class="n">_test</span><span class="p">,</span> \
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span>                                         <span class="p">;</span> <span class="n">DATA</span> <span class="n">XREF</span><span class="o">:</span> <span class="n">__objc_classlist</span><span class="o">:</span><span class="mo">0000000100004060</span><span class="err">↑</span><span class="n">o</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span>                                         <span class="p">;</span> <span class="n">__objc_classrefs</span><span class="o">:</span><span class="n">classRef_test</span><span class="err">↑</span><span class="n">o</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span>                                <span class="n">offset</span> <span class="n">_OBJC_CLASS_</span><span class="err">$</span><span class="n">_NSObject</span><span class="p">,</span> \
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span>                                <span class="n">offset</span> <span class="n">__objc_empty_cache</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">offset</span> <span class="n">test_</span><span class="err">$</span><span class="n">classData</span><span class="o">&gt;</span>
+<span class="n">__objc_data</span><span class="o">:</span><span class="mo">000000010000</span><span class="mi">8118</span> <span class="n">__objc_data</span>     <span class="n">ends</span>
+</code></pre></div></div>
+
+<p>关于它的内存结构后面会详细说明：</p>
+
+<h4 id="category机制的工作流程">Category机制的工作流程</h4>
+
+<p>在 Objective-C 中，<strong>Category</strong>（分类）是一种在不修改原始类（<code class="language-plaintext highlighter-rouge">@interface/@implementation</code>）的源代码，也不需要子类化的情况下，向现有类添加方法（但<strong>不能</strong>添加实例变量）的机制。它的工作流程在运行时大致可用下面的 ASCII 图表示：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>           ┌───────────────────────────────────┐
+           │     编译期生成：Category 对象        │
+           │   (名字: MyClass+Additions)        │
+           │───────────────────────────────────│
+           │ class_name: "MyClass"             │
+           │ method_list:                      │
+           │   + (void)catMethod1;             │
+           │   - (NSString*)catMethod2;        │
+           └───────────────────────────────────┘
+                          │
+      链接 &amp; 加载时，把 Category 的方法表挂到目标类────┐
+                          ▼                       │
+┌──────────────────────────────┐        ┌────────────────────────────────┐
+│       Runtime: MyClass       │        │ Runtime: MyClass+Additions     │
+│ ┌──────────────────────────┐ │        │ ┌──────────────────────────┐   │
+│ │  original_method_list    │ │        │ │ category_method_list     │   │
+│ │  [m1, m2, ...]           │ │        │ │ [catMethod1, catMethod2] │   │
+│ └──────────────────────────┘ │        │ └──────────────────────────┘   │
+└──────────────────────────────┘        └────────────────────────────────┘
+                          │
+                          │ Runtime 合并（插入到最前面 —— 覆盖原有同名方法）
+                          ▼
+┌─────────────────────────────────────────────────┐
+│             Runtime: MyClass (合并后)            │
+│ ┌─────────────────────────────────────────────┐ │
+│ │ final_method_list                           │ │
+│ │ [catMethod1, catMethod2, m1, m2, ...]       │ │
+│ └─────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────┘
+
+</code></pre></div></div>
+
+<h4 id="使用方法">使用方法：</h4>
+
+<pre><code class="language-objective-c">@interface MyClass (Additions)
+- (void)catMethod1;
+- (NSString*)catMethod2;
+@end
+
+@implementation MyClass (Additions)
+- (void)catMethod1 { /* ... */ }
+- (NSString*)catMethod2 { return @"hello"; }
+@end
+
+</code></pre>
+
+<p>当程序加载到内存，Category 里的方法会被插入到目标类（<code class="language-plaintext highlighter-rouge">MyClass</code>）的 method list 前端；如果与原类存在同名方法，就会覆盖原有实现。</p>
+
+<p>Category 只能增加方法，无法改变类实例的内存布局。若需要增加属性 backed by ivar，请改用 <strong>Extension</strong>（类扩展）或子类。</p>
+
+<p>如果一个类有多个 Category，哪一个先插入、哪一个后插入并没有严格保证，所以不要在不同 Category 中互相覆盖同一个方法来制造“链式调用”——行为未定义。</p>
+
+<h4 id="用途">用途：</h4>
+
+<ul>
+  <li>给系统类（如 <code class="language-plaintext highlighter-rouge">NSString</code>、<code class="language-plaintext highlighter-rouge">UIViewController</code>）添加方便调用的工具方法</li>
+  <li>按模块分文件组织同一类的庞大接口</li>
+  <li>声明私有方法（不过更推荐用类扩展）</li>
+</ul>
+
+<h4 id="isa">isa:</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>+---------------+      +--------------------------------+      +--------------------+
+|   instance    | ----&gt;|             class              | ----&gt;|     meta-class     |
++---------------+      +--------------------------------+      +--------------------+
+| isa           |      | isa                            |      | isa                |
+| 其他成员变量    |      | superclass                     |      | superclass         |
++---------------+      | 属性、对象方法、协议、成员变量       |      | 类方法              |
+                       | ......                         |      | ......             |
+                       +--------------------------------+      +--------------------+
+
+</code></pre></div></div>
+
+<ul>
+  <li>当调用对象方法时，通过instance的isa找到class，最后找到对象方法的实现进行调用</li>
+  <li>当调用类方法时，通过class的isa找到meta-class，最后找到类方法的实现进行调用</li>
+</ul>
+
+<p>使用调试器查看isa的内部结构</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="n">lldb</span><span class="p">)</span> <span class="n">p</span> <span class="p">(</span><span class="n">class_data_bits_t</span><span class="o">*</span><span class="p">)</span><span class="mh">0x1000081e0</span>
+<span class="p">(</span><span class="n">class_data_bits_t</span> <span class="o">*</span><span class="p">)</span> <span class="mh">0x00000001000081e0</span>
+<span class="p">(</span><span class="n">lldb</span><span class="p">)</span> <span class="n">p</span> <span class="p">((</span><span class="n">class_data_bits_t</span><span class="o">*</span><span class="p">)</span><span class="mh">0x1000081e0</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">()</span>
+<span class="p">(</span><span class="n">class_rw_t</span> <span class="o">*</span><span class="p">)</span> <span class="mh">0x000060000207d000</span>
+  
+<span class="p">(</span><span class="n">lldb</span><span class="p">)</span> <span class="n">p</span> <span class="p">((</span><span class="n">class_rw_t</span> <span class="o">*</span><span class="p">)</span> <span class="mh">0x000060000207d000</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">ro_or_rw_ext</span>
+<span class="p">(</span><span class="n">explicit_atomic</span><span class="o">&lt;</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="o">&gt;</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">__1</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="o">&gt;</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">Value</span> <span class="o">=</span> <span class="mi">4295000312</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+<span class="p">(</span><span class="n">lldb</span><span class="p">)</span> <span class="n">p</span><span class="o">/</span><span class="n">x</span> <span class="mi">4295000312</span>
+<span class="p">(</span><span class="kt">long</span><span class="p">)</span> <span class="mh">0x00000001000080f8</span>
+  
+<span class="p">(</span><span class="n">lldb</span><span class="p">)</span> <span class="n">p</span> <span class="p">((</span><span class="n">class_rw_t</span> <span class="o">*</span><span class="p">)</span> <span class="mh">0x000060000207d000</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">properties</span><span class="p">()</span>
+<span class="p">(</span><span class="k">const</span> <span class="n">property_array_t</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">list_array_tt</span><span class="o">&lt;</span><span class="n">property_t</span><span class="p">,</span> <span class="n">property_list_t</span><span class="p">,</span> <span class="n">RawPtr</span><span class="o">&gt;</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">storage</span> <span class="o">=</span> <span class="p">(</span><span class="n">_value</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="p">(</span><span class="n">lldb</span><span class="p">)</span> <span class="n">p</span> <span class="p">(((</span><span class="n">class_rw_t</span> <span class="o">*</span><span class="p">)</span> <span class="mh">0x000060000207d000</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">methods</span><span class="p">())</span>
+<span class="p">(</span><span class="k">const</span> <span class="n">method_array_t</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">list_array_tt</span><span class="o">&lt;</span><span class="n">method_t</span><span class="p">,</span> <span class="n">method_list_t</span><span class="p">,</span> <span class="n">method_list_t_authed_ptr</span><span class="o">&gt;</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">storage</span> <span class="o">=</span> <span class="p">(</span><span class="n">_value</span> <span class="o">=</span> <span class="mi">4295000136</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+
+  
+</code></pre></div></div>
+
+<h4 id="objc_class的结构">objc_class的结构</h4>
+
+<p>结构体内容会随着版本不同而略有不同。（可能这就是苹果吧，说不支持就不支持）</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>+--------------------------------------------------------+
+| struct objc_class {                                    |
+|   Class isa;                                           |
+|   Class superclass;                                    |
+|   cache_t cache;           // 方法缓存                  |
+|   class_data_bits_t bits;  // 用于获取具体的类信息        |
+| };                                                     |
++--------------------------------------------------------+
+                   │
+                   │ bits &amp; FAST_DATA_MASK
+                   ▼
++--------------------------------------------------------+
+| struct class_rw_t {                                    |
+|   uint32_t flags;                                      |
+|   uint32_t version;                                    |
+|   const class_ro_t *ro;       ←─── 指向下方 class_ro    |
+|   method_list_t *methods;     // 方法列表               |
+|   property_list_t *properties; // 属性列表              |
+|   const protocol_list_t *protocols; // 协议列表         |
+|   Class firstSubclass;                                 |
+|   Class nextSiblingClass;                              |
+|   char *demangledName;                                 |
+| };                                                     |
++--------------------------------------------------------+
+                   │
+                   │  ro 指针
+                   ▼
++--------------------------------------------------------+
+| struct class_ro_t {                                    |
+|   uint32_t flags;                                      |
+|   uint32_t instanceStart;                              |
+|   uint32_t instanceSize;   // instance 对象占用的内存空间 |
+| #ifdef __LP64__                                        |
+|   uint32_t reserved;                                   |
+| #endif                                                 |
+|   const uint8_t *ivarLayout;                           |
+|   const char *name;          // 类名                    |
+|   method_list_t *baseMethodList;                       |
+|   protocol_list_t *baseProtocols;                      |
+|   const ivar_list_t *ivars; // 成员变量列表              |
+|   const uint8_t *weakIvarLayout;                       |
+|   property_list_t *baseProperties;                     |
+| };                                                     |
++--------------------------------------------------------+
+
+</code></pre></div></div>
+
+<h5 id="objc_class">objc_class</h5>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="n">objc_class</span> <span class="p">{</span>
+    <span class="n">Class</span> <span class="n">isa</span><span class="p">;</span>  <span class="c1">// 指向元类（metaclass）</span>
+    <span class="n">Class</span> <span class="n">superclass</span><span class="p">;</span> <span class="c1">// 父类</span>
+    <span class="n">cache_t</span> <span class="n">cache</span><span class="p">;</span>    <span class="c1">// 方法缓存</span>
+    <span class="n">class_data_bits_t</span> <span class="n">bits</span><span class="p">;</span> <span class="c1">// 核心数据 + 标志位</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>Objective-C 的类对象（<code class="language-plaintext highlighter-rouge">Class</code>）内部使用了一个联合体（union），将类的数据和一些额外的标志位信息合并存储在一个字段中。这种设计是为了节省内存并实现更高效的访问。<code class="language-plaintext highlighter-rouge">bits</code> 字段就是 <code class="language-plaintext highlighter-rouge">class_data_bits_t</code> 类型，它包含了以下两个重要部分：</p>
+
+<ol>
+  <li><strong>指向 <code class="language-plaintext highlighter-rouge">class_rw_t</code> 的指针</strong>
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">class_rw_t</code> 是“可读写”的类数据结构，包含方法列表、属性、协议等运行时动态修改的内容。</li>
+      <li>你可以理解为它是类的实际内容。</li>
+    </ul>
+  </li>
+  <li><strong>Tagged Pointer 风格的标志位（Bits）</strong>
+    <ul>
+      <li>利用指针地址的低位（通常是最后几位）来存储状态标志。</li>
+      <li>因为内存对齐的原因，正常指针的低位通常为 0，所以可以安全地借用这些位作为标志。</li>
+    </ul>
+  </li>
+</ol>
+
+<p>通过调用类的方法（如 <code class="language-plaintext highlighter-rouge">class_getName</code>, <code class="language-plaintext highlighter-rouge">class_copyMethodList</code> 等），最终会调用到 runtime 内部的函数，从 <code class="language-plaintext highlighter-rouge">class_data_bits_t</code> 中提取出实际的 <code class="language-plaintext highlighter-rouge">class_rw_t *</code> 数据。大致逻辑如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>class_rw_t* data() const {
+    return (class_rw_t *)(bits &amp; ~CLASS_DATA_MASK);
+}
+</code></pre></div></div>
+
+<p>Objective-C 的类在运行时是可以动态扩展的（比如通过 Category 添加方法），这些动态添加的信息都保存在 <code class="language-plaintext highlighter-rouge">class_rw_t</code> 结构中。而 <code class="language-plaintext highlighter-rouge">class_data_bits_t</code> 正是连接到这个结构的桥梁。</p>
+
+<h5 id="cache_t">cache_t</h5>
+
+<p><code class="language-plaintext highlighter-rouge">cache_t</code> 是一个用于优化消息派发效率的数据结构。Objective-C 使用动态消息派发机制来调用对象的方法，这意味着每次发送消息（即调用方法）时，系统需要查找该方法的实现。为了加速这一过程，Objective-C 运行时使用了缓存机制，<code class="language-plaintext highlighter-rouge">cache_t</code> 就是这个缓存机制的核心数据结构。</p>
+
+<p>大致结构：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="n">bucket_t</span> <span class="p">{</span>
+    <span class="n">SEL</span> <span class="n">_sel</span><span class="p">;</span> <span class="c1">// 方法选择器</span>
+    <span class="n">IMP</span> <span class="n">_imp</span><span class="p">;</span> <span class="c1">// 方法实现</span>
+    <span class="c1">// 可能还有其他字段，如下一个bucket的指针等</span>
+<span class="p">};</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">cache_t</span> <span class="p">{</span>
+    <span class="n">bucket_t</span> <span class="o">*</span><span class="n">_buckets</span><span class="p">;</span> <span class="c1">// 指向桶数组的指针</span>
+    <span class="n">mask_t</span> <span class="n">_mask</span><span class="p">;</span> <span class="c1">// 掩码，用于快速计算索引</span>
+    <span class="kt">uint32_t</span> <span class="n">_occupied</span><span class="p">;</span> <span class="c1">// 已占用的桶数</span>
+<span class="p">}</span> <span class="n">cache_t</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h5 id="class_rw_t">class_rw_t</h5>
+
+<p>这个结构体在ida中看不到，在ida中通过bits直接看到的是class_ro_t</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="n">class_rw_t</span> <span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">flags</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">witness</span><span class="p">;</span>
+    <span class="k">const</span> <span class="n">class_ro_t</span> <span class="o">*</span><span class="n">ro_or_rw_ext</span><span class="p">;</span> <span class="c1">// 指向只读部分的指针</span>
+    <span class="n">Class</span> <span class="n">firstSubclass</span><span class="p">;</span>
+    <span class="n">Class</span> <span class="n">nextSiblingClass</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">class_rw_t</code> 是一个非常重要的数据结构，它代表了一个类的“可读写”部分的数据。与之相对的是 <code class="language-plaintext highlighter-rouge">class_ro_t</code>（read-only），通常包含类定义时确定的信息。<code class="language-plaintext highlighter-rouge">class_rw_t</code> 包含了那些可以在运行时被修改的数据，比如方法列表、属性列表和协议列表等。</p>
+
+<ul>
+  <li><strong>Ro</strong>：指向 <code class="language-plaintext highlighter-rouge">class_ro_t</code> 结构体的指针，包含了只读部分的信息。</li>
+</ul>
+
+<h5 id="class_ro_t">class_ro_t</h5>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="n">class_ro_t</span> <span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">flags</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">instanceStart</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">instanceSize</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">reserved</span><span class="p">;</span>
+    <span class="k">union</span> <span class="p">{</span>
+        <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span> <span class="n">ivarLayout</span><span class="p">;</span>
+        <span class="n">Class</span> <span class="n">nonMetaclass</span><span class="p">;</span>
+    <span class="p">};</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">;</span>
+    <span class="n">method_list_t</span> <span class="o">*</span><span class="n">baseMethods</span><span class="p">;</span>
+    <span class="n">protocol_list_t</span> <span class="o">*</span><span class="n">baseProtocols</span><span class="p">;</span>
+    <span class="n">ivar_list_t</span> <span class="o">*</span><span class="n">ivars</span><span class="p">;</span>
+    <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">weakIvarLayout</span><span class="p">;</span>
+    <span class="n">property_list_t</span> <span class="o">*</span><span class="n">baseProperties</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">class_ro_t</code> 在 Objective-C 中负责存储类的静态信息，提供了类的基本元数据以及编译时期确定的方法、属性和协议等信息。它与 <code class="language-plaintext highlighter-rouge">class_rw_t</code> 共同协作，支持了 Objective-C 的动态特性。</p>
+
+<h5 id="method_list_t">method_list_t</h5>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">method_t</span> <span class="p">{</span>
+    <span class="n">SEL</span> <span class="n">name</span><span class="p">;</span> <span class="c1">// 方法名（选择器）</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">types</span><span class="p">;</span> <span class="c1">// 方法的类型编码</span>
+    <span class="n">IMP</span> <span class="n">imp</span><span class="p">;</span> <span class="c1">// 方法实现</span>
+<span class="p">}</span> <span class="n">method_t</span><span class="p">;</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">method_list_t</span> <span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">entsize</span><span class="p">;</span> <span class="c1">// 条目大小</span>
+    <span class="kt">uint32_t</span> <span class="n">count</span><span class="p">;</span> <span class="c1">// 方法数量</span>
+    <span class="n">first</span><span class="p">;</span> <span class="c1">// 第一个方法</span>
+    <span class="c1">// 实际上，这里会跟随 'count' 个 method_t 结构体</span>
+<span class="p">}</span> <span class="n">method_list_t</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>一般情况下，<code class="language-plaintext highlighter-rouge">method_list_t</code> 结构体大致包含以下字段：</p>
+
+<ul>
+  <li><strong>entsize</strong>: 每个方法条目的大小，有助于遍历方法列表。</li>
+  <li><strong>count</strong>: 方法的数量。</li>
+  <li><strong>first</strong>: 方法数组的起始位置。每个元素是一个 <code class="language-plaintext highlighter-rouge">method_t</code> 结构体，代表一个单独的方法。</li>
+</ul>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">method_t</code> 结构体通常包括以下几个成员：</p>
+
+<ul>
+  <li><strong>name</strong>: 方法的选择器（selector），即方法的名字。</li>
+  <li><strong>types</strong>: 方法的类型编码字符串，描述了方法的参数和返回值类型。</li>
+  <li><strong>imp</strong>: 实现指针（Implementation Pointer），指向方法的实际实现代码。</li>
+</ul>
+
+<h5 id="property_list_t">property_list_t</h5>
+
+<p>属性提供了一种简洁的方式来声明类成员变量的访问器（getter 和 setter 方法），以及指定如何存储和访问这些变量。它简化了内存管理和线程安全等问题的处理。</p>
+
+<p><code class="language-plaintext highlighter-rouge">property_list_t</code> 是一个用于表示类属性列表的数据结构。它包含了类声明的所有属性的相关信息。通过 <code class="language-plaintext highlighter-rouge">property_list_t</code>，Objective-C 支持了属性的动态查询和操作，这是其强大反射机制的一部分。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">property_t</span> <span class="p">{</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">;</span> <span class="c1">// 属性名称</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">attributes</span><span class="p">;</span> <span class="c1">// 属性的属性描述</span>
+<span class="p">}</span> <span class="n">property_t</span><span class="p">;</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">property_list_t</span> <span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">entsize</span><span class="p">;</span> <span class="c1">// 条目大小</span>
+    <span class="kt">uint32_t</span> <span class="n">count</span><span class="p">;</span> <span class="c1">// 属性数量</span>
+    <span class="n">property_t</span> <span class="n">list</span><span class="p">[];</span> <span class="c1">// 属性数组</span>
+<span class="p">}</span> <span class="n">property_list_t</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">property_list_t</code> 包含以下关键元素：</p>
+
+<ul>
+  <li><strong>entsize</strong>: 每个属性条目的大小，有助于遍历属性列表。</li>
+  <li><strong>count</strong>: 属性的数量。</li>
+  <li><strong>list</strong>: 属性数组的起始位置。每个元素是一个 <code class="language-plaintext highlighter-rouge">property_t</code> 结构体，代表一个单独的属性。</li>
+</ul>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">property_t</code> 结构体通常包括以下几个成员：</p>
+
+<ul>
+  <li><strong>name</strong>: 属性的名字。</li>
+  <li><strong>attributes</strong>: 属性的属性描述字符串，包含了如属性是原子性还是非原子性、是否为只读、关联的对象类型等信息。</li>
+</ul>
+
+<p>利用 Objective-C 运行时函数如 <code class="language-plaintext highlighter-rouge">class_copyPropertyList</code> 可以获取某个类的所有属性列表，</p>
+
+<p>使用示例：</p>
+
+<pre><code class="language-objective-c">@interface MyClass : NSObject
+@property (nonatomic, retain) NSString *name;
+@property (nonatomic, assign) NSInteger age;
+@end
+
+@implementation MyClass
+@synthesize name = _name; // 自动生成实例变量_name及其存取方法
+@end
+</code></pre>
+
+<h5 id="protocol_list_t">protocol_list_t</h5>
+
+<p>协议定义了一组方法的列表，类可以采纳这些协议并实现其中的方法。这为 Objective-C 提供了类似其他语言中的接口（Interface）的功能。协议允许开发者定义一些通用的行为或能力，而不关心具体实现。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">protocol_t</span> <span class="p">{</span>
+    <span class="kt">void</span> <span class="o">*</span> <span class="n">isa</span><span class="p">;</span>  <span class="c1">// NULL</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">protocol_name</span><span class="p">;</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">_protocol_list_t</span> <span class="o">*</span> <span class="n">protocol_list</span><span class="p">;</span> <span class="c1">// super protocols</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">method_list_t</span> <span class="o">*</span><span class="n">instance_methods</span><span class="p">;</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">method_list_t</span> <span class="o">*</span><span class="n">class_methods</span><span class="p">;</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">method_list_t</span> <span class="o">*</span><span class="n">optionalInstanceMethods</span><span class="p">;</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">method_list_t</span> <span class="o">*</span><span class="n">optionalClassMethods</span><span class="p">;</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">_prop_list_t</span> <span class="o">*</span> <span class="n">properties</span><span class="p">;</span>
+    <span class="k">const</span> <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">size</span><span class="p">;</span>  <span class="c1">// sizeof(struct _protocol_t)</span>
+    <span class="k">const</span> <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">flags</span><span class="p">;</span>  <span class="c1">// = 0</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">**</span> <span class="n">extendedMethodTypes</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">protocol_list_t</span> <span class="p">{</span>
+    <span class="kt">uintptr_t</span> <span class="n">count</span><span class="p">;</span> <span class="c1">// 协议数量</span>
+    <span class="n">protocol_t</span> <span class="o">*</span><span class="n">list</span><span class="p">[];</span> <span class="c1">// 协议数组</span>
+<span class="p">}</span> <span class="n">protocol_list_t</span><span class="p">;</span>
+</code></pre></div></div>
+
+<ul>
+  <li><strong>entsize</strong>: 每个协议条目的大小，有助于遍历协议列表。</li>
+  <li><strong>count</strong>: 协议的数量。</li>
+  <li><strong>list</strong>: 协议数组的起始位置。每个元素是一个指向 <code class="language-plaintext highlighter-rouge">protocol_t</code> 的指针，代表一个单独的协议。</li>
+</ul>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">protocol_t</code> 结构体通常包括以下几个成员：</p>
+
+<ul>
+  <li><strong>protocol_name</strong>: 协议的名字。</li>
+  <li><strong>protocols</strong>: 该协议遵守的其他协议列表（即继承的协议）。</li>
+  <li><strong>instanceMethods</strong>: 实例方法列表。</li>
+  <li><strong>classMethods</strong>: 类方法列表。</li>
+  <li><strong>optionalInstanceMethods</strong>: 可选实例方法列表。</li>
+  <li><strong>optionalClassMethods</strong>: 可选类方法列表。</li>
+  <li><strong>instanceProperties</strong>: 实例属性列表。</li>
+</ul>
+
+<p>使用示例：</p>
+
+<pre><code class="language-objective-c">@protocol MyProtocol &lt;NSObject&gt;
+- (void)requiredMethod;
+@optional
+- (void)optionalMethod;
+@end
+
+@interface MyClass : NSObject &lt;MyProtocol&gt;
+@end
+
+@implementation MyClass
+- (void)requiredMethod {
+    NSLog(@"Required method implemented.");
+}
+// optionalMethod 可以不实现
+@end
+</code></pre>
+
+<p>属性与协议结合使用：</p>
+
+<p>协议和属性经常一起使用，特别是在设计框架或库时。例如，你可以定义一个协议来规定某些属性的存在，这样任何遵循该协议的类都必须实现这些属性。</p>
+
+<pre><code class="language-objective-c">@protocol UserProtocol &lt;NSObject&gt;
+@property (nonatomic, copy) NSString *username;
+@property (nonatomic, assign) NSUInteger userID;
+@end
+
+@interface User : NSObject &lt;UserProtocol&gt;
+@end
+
+@implementation User
+@synthesize username = _username;
+@synthesize userID = _userID;
+@end
+</code></pre>
+
+<h5 id="ivar_list_t">ivar_list_t</h5>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">ivar_t</span> <span class="p">{</span>
+    <span class="kt">int32_t</span> <span class="o">*</span><span class="n">offset</span><span class="p">;</span>   <span class="c1">//</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">;</span>  <span class="c1">// 实例变量名称</span>
+    <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">type</span><span class="p">;</span>  <span class="c1">// 实例变量类型的编码字符串</span>
+    <span class="c1">// alignment is sometimes -1; use alignment() instead</span>
+    <span class="kt">uint32_t</span> <span class="n">alignment_raw</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">size</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">ivar_t</span><span class="p">;</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">ivar_list_t</span> <span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">entsize</span><span class="p">;</span> <span class="c1">// 条目大小</span>
+    <span class="kt">uint32_t</span> <span class="n">count</span><span class="p">;</span> <span class="c1">// 实例变量数量</span>
+    <span class="n">ivar_t</span> <span class="n">first</span><span class="p">;</span> <span class="c1">// 第一个实例变量</span>
+    <span class="c1">// 实际上，这里会跟随 'count' 个 ivar_t 结构体</span>
+<span class="p">}</span> <span class="n">ivar_list_t</span><span class="p">;</span>
+</code></pre></div></div>
+
+<ul>
+  <li><strong>entsize</strong>: 每个实例变量条目的大小，有助于遍历实例变量列表。</li>
+  <li><strong>count</strong>: 实例变量的数量。</li>
+  <li><strong>list</strong>: 实例变量数组的起始位置。每个元素是一个 <code class="language-plaintext highlighter-rouge">ivar_t</code> 结构体，代表一个单独的实例变量。</li>
+</ul>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">ivar_t</code> 结构体通常包括以下几个成员：</p>
+
+<ul>
+  <li><strong>name</strong>: 实例变量的名字。</li>
+  <li><strong>type</strong>: 实例变量的类型编码字符串，描述了实例变量的数据类型。</li>
+  <li><strong>offset</strong>: 实例变量在对象内存布局中的偏移量，用于快速访问实例变量。</li>
+  <li><strong>alignment</strong>: 对齐要求，指定了实例变量在内存中的对齐方式。</li>
+  <li><strong>size</strong>: 实例变量占用的字节数。</li>
+</ul>
+
+<h4 id="cache">cache</h4>
+
+<p>可以查看objc_runtime源码中的category_t的底层结构：里面有实例方法，类方法，协议，属性</p>
+
+<pre><code class="language-objective-c">struct category_t {
+    const char *name;
+    classref_t cls;
+    WrappedPtr&lt;method_list_t, method_list_t::Ptrauth&gt; instanceMethods;
+    WrappedPtr&lt;method_list_t, method_list_t::Ptrauth&gt; classMethods;
+    struct protocol_list_t *protocols;
+    struct property_list_t *instanceProperties;
+    // Fields below this point are not always present on disk.
+    struct property_list_t *_classProperties;
+
+    method_list_t *methodsForMeta(bool isMeta) const {
+        if (isMeta) return classMethods;
+        else return instanceMethods;
+    }
+
+    property_list_t *propertiesForMeta(bool isMeta, struct header_info *hi) const;
+    
+    protocol_list_t *protocolsForMeta(bool isMeta) const {
+        if (isMeta) return nullptr;
+        else return protocols;
+    }
+};
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">_read_images</code>:这个函数中有具体的操作。</p>
+
+<h4 id="加载分类方法">加载分类方法：</h4>
+
+<p>dyld会调用objc_init</p>
+
+<p>​    _objc_init：运行时初始化调用</p>
+
+<p>​        map_images</p>
+
+<p>​            _read_images</p>
+
+<p>​                remethodizeClass</p>
+
+<h4 id="处理分类方法">处理分类方法：</h4>
+
+<p>attachLists：</p>
+
+<p>​    array()-&gt;lists：类对象原来的方法列表</p>
+
+<p>​    addLists：所有分类的方法列表</p>
+
+<p>​    将原来的方法列表往回move，然后把分类方法列表添加到前面，所以严格说法是不是覆盖，只是优先级比较高：</p>
+
+<pre><code class="language-objective-c">- (void)printMethodNamesOfClass:(Class)cls
+{
+    unsigned int count;
+    // 获得方法数组
+    Method *methodList = class_copyMethodList(cls, &amp;count);
+    
+    // 存储方法名
+    NSMutableString *methodNames = [NSMutableString string];
+    
+    // 遍历所有的方法
+    for (int i = 0; i &lt; count; i++) {
+        // 获得方法
+        Method method = methodList[i];
+        // 获得方法名
+        NSString *methodName = NSStringFromSelector(method_getName(method));
+        // 拼接方法名
+        [methodNames appendString:methodName];
+        [methodNames appendString:@", "];
+    }
+    
+    // 释放
+    free(methodList);
+    
+    // 打印方法名
+    NSLog(@"%@ - %@", cls, methodNames);
+}
+</code></pre>
+
+<h3 id="kvo-key-value-observing-键值监听">KVO key-value observing 键值监听</h3>
+
+<p>可以监听某个对象属性值的改变</p>
+
+<p>使用：调用addObserver方法，options参数使用：</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>NSKeyValueObservingOptions options = NSKeyValueObservingOptionNew</td>
+      <td>NSKeyValueObservingOptionOld;</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>本质：如果你的使用了addObserver那么这个isa就变了。指向NSKVONotify_xxx。所以他会劫持set函数调用，新的set里面调用_NSSetIntValueAndNotify函数。所以如果直接修改变量是触发不了回调的，只有通过setter和KVC机制的修改才能让它触发回调。新的isa中有setXXX:, class, dealloc, _isKVOA,这么几个类方法</p>
+
+<p>_NSSetIntValueAndNotify内部实现：</p>
+
+<ul>
+  <li>调用[self willChangeVallueForKey]</li>
+  <li>调用原来的setter实现</li>
+  <li>调用[self didChangeValueForKey]
+    <ul>
+      <li>调用observer的observeValueForKeyPathofObject:change:context</li>
+    </ul>
+  </li>
+</ul>
+
+<h3 id="kvc-key-value-coding-键值编码可以通过一个key来访问某个属性">KVC Key-Value Coding 键值编码，可以通过一个key来访问某个属性</h3>
+
+<p><code class="language-plaintext highlighter-rouge">- (void)setValue:(id)value forKeyPath:(NSString *)keyPath</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">- (void)setValue:(id)value forKey:(NSString *)key</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">- (id)valueforKeyPath:(NSString *)keyPath</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">- (id)valueforKey:(NSString *)key</code></p>
+
+<p>原理：</p>
+
+<p>赋值过程：setValue:forkey: -&gt; setKey，_setKey 没找到方法查看 accessInstanceVariablesDirectly方法返回值询问是否允许访问成员变量，不允许会抛异常，允许使用：<code class="language-plaintext highlighter-rouge">_key _isKey </code>顺序查找成员变量，找到了直接赋值。</p>
+
+<p>取值过程：set变get</p>
+
+<h3 id="dylb启动加载动态库">dylb启动加载动态库：</h3>
+
+<h4 id="调试dyld的方法">调试dyld的方法：</h4>
+
+<ol>
+  <li>
+    <p>可以通过替换dyld的方式，将dyld替换成自己编译的。但是这种方法有风险，而且还得要关闭一些安全选项。</p>
+  </li>
+  <li>
+    <p>通过dyld提供的环境变量来控制dyld在运⾏过程中输出有⽤信息。</p>
+  </li>
+</ol>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1. DYLD_PRINT_APIS：打印dyld内部⼏乎所有发⽣的调⽤；
+2. DYLD_PRINT_LIBRARIES：打印在应⽤程序启动期间正在加载的所有动态库；
+3. DYLD_PRINT_WARNINGS：打印dyld运⾏过程中的辅助信息；
+4. DYLD_<span class="k">*</span>_PATH：显示dyld搜索动态库的⽬录顺序；
+5. DYLD_PRINT_ENV：显示dyld初始化的环境变量；
+6. DYLD_PRINT_SEGMENTS：打印当前程序的segment信息；
+7. DYLD_PRINT_STATISTICS：打印pre-main <span class="nb">time</span>；
+8. DYLD_PRINT_INITIALIZERS：显示都有initialiser。
+</code></pre></div></div>
+
+<h4 id="启动流程">启动流程：</h4>
+
+<ol>
+  <li>执⾏⾃身初始化配置加载环境；LC_DYLD_INFO_ONLY</li>
+  <li>加载当前程序链接的所有动态库到指定的内存中；LC_LOAD_DYLIB</li>
+  <li>搜索所有的动态库，绑定需要在调⽤程序之前⽤的符号（⾮懒加载符号）；LC_DYSYMTAB</li>
+  <li>在indirect symbol table中将需要绑定的导⼊符号真实地址替换；LC_DYSYMTAB</li>
+  <li>向程序提供在Runtime时使⽤dyld的接⼝函数（存在libdyld.dylib中，由LC_LOAD_DYLIB提供）；</li>
+  <li>配置Runtime，执⾏所有动态库/image中使⽤的全局构造函数；</li>
+  <li>dyld调⽤程序⼊⼝函数，开始执⾏程序。LC_MAIN</li>
+</ol>
+
+<h4 id="源码分析">源码分析</h4>
+
+<p>在这里下载对应版本的源码：https://opensource.apple.com/releases/</p>
+
+<p>这是旧版的启动流程：</p>
+
+<ul>
+  <li>__dyld_start()
+    <ul>
+      <li>dyldInitialzation.cpp`dyldbootstrap::start()
+        <ul>
+          <li>dyld2.cpp`dyld::_main()
+            <ul>
+              <li>instantiateFromLoadedImage()
+                <ul>
+                  <li>ImageLoaderMachO.cpp`ImageLoaderMachO::instantiateMainExecutable()
+                    <ul>
+                      <li>runInitializers()
+                        <ul>
+                          <li>processInitializers()
+                            <ul>
+                              <li>ImageLoader::recursiveInitialization()递归实例化
+                                <ul>
+                                  <li>doInitialization():
+                                    <ul>
+                                      <li>doImageInit()</li>
+                                    </ul>
+                                  </li>
+                                  <li>context.notifySingle()即notifySingle()
+                                    <ul>
+                                      <li>(*sNotifyObjcInit)() 由_dyld_objc_notify_register()第二个参数指定。而这个函数由objc的objc_init()调用</li>
+                                    </ul>
+                                  </li>
+                                </ul>
+                              </li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<p>这是新版的：</p>
+
+<ul>
+  <li>
+    <p>__dyld_start() —–&gt; jmp start() （在dyldMain.cpp中）</p>
+
+    <ul>
+      <li>
+        <p>prepare() 主要操作都在这里。</p>
+
+        <ul>
+          <li>
+            <p>JustInTimeLoader::loadDependents()（JustInTimeLoader.cpp）</p>
+
+            <ul>
+              <li>MachOFile::forEachDependentDylib()（MachOFile.cpp）
+                <ul>
+                  <li>MachOFile::forEachLoadCommand()（）
+                    <ul>
+                      <li>invocation function for block in dyld3::MachOFile::forEachDependentDylib(void (char const*, bool, bool, bool, unsigned int, unsigned int, bool&amp;) block_pointer) const ()之前的第二个回调函数。
+                        <ul>
+                          <li>invocation function for block in dyld4::JustInTimeLoader::loadDependents(Diagnostics&amp;, dyld4::RuntimeState&amp;, dyld4::Loader::LoadOptions const&amp;) ()
+                            <ul>
+                              <li>dyld4::JustInTimeLoader::matchesPath(char const*) const ()
+                                <ul>
+                                  <li>dyld3::MachOFile::installName() const ()
+                                    <ul>
+                                      <li>dyld3::MachOFile::getDylibInstallName(char const<em>*, unsigned int</em>, unsigned int*) const ()
+                                        <ul>
+                                          <li>dyld3::MachOFile::forEachLoadCommand(Diagnostics&amp;, void (load_command const*, bool&amp;) block_pointer) const () 递归处理依赖的dylib库</li>
+                                        </ul>
+                                      </li>
+                                    </ul>
+                                  </li>
+                                </ul>
+                              </li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <p>dyld4::APIs::runAllInitializersForMain() () 这是注册调用load方法的回调。</p>
+
+            <ul>
+              <li>
+                <p>dyld4::JustInTimeLoader::runInitializers(dyld4::RuntimeState&amp;) const ()</p>
+
+                <ul>
+                  <li>
+                    <p>dyld4::Loader::findAndRunAllInitializers(dyld4::RuntimeState&amp;) const ()</p>
+
+                    <ul>
+                      <li>
+                        <p>dyld3::MachOAnalyzer::forEachInitializer(Diagnostics&amp;, dyld3::MachOAnalyzer::VMAddrConverter const&amp;, void (unsigned int) block_pointer, void const*) const ()</p>
+
+                        <ul>
+                          <li>
+                            <p>dyld3::MachOFile::forEachSection(void (dyld3::MachOFile::SectionInfo const&amp;, bool, bool&amp;) block_pointer) const ()</p>
+
+                            <ul>
+                              <li>
+                                <p>dyld3::MachOFile::forEachLoadCommand(Diagnostics&amp;, void (load_command const*, bool&amp;) block_pointer) const ()</p>
+
+                                <ul>
+                                  <li>
+                                    <p>invocation function for block in dyld3::MachOFile::forEachSection(void (dyld3::MachOFile::SectionInfo const&amp;, bool, bool&amp;) block_pointer) const ()</p>
+
+                                    <ul>
+                                      <li>
+                                        <p>invocation function for block in dyld3::MachOAnalyzer::forEachInitializer(Diagnostics&amp;, dyld3::MachOAnalyzer::VMAddrConverter const&amp;, void (unsigned int) block_pointer, void const*) const ()</p>
+
+                                        <ul>
+                                          <li>
+                                            <p>invocation function for block in dyld4::Loader::findAndRunAllInitializers(dyld4::RuntimeState&amp;) const::$_0::operator()() const ()</p>
+                                          </li>
+                                          <li>
+                                            <p>libSystem.B.dylib`libSystem_initializer()</p>
+
+                                            <ul>
+                                              <li>
+                                                <p>libdispatch.dylib`libdispatch_init()</p>
+
+                                                <ul>
+                                                  <li>
+                                                    <p>libdispatch.dylib`_os_object_init()</p>
+
+                                                    <ul>
+                                                      <li>
+                                                        <p>libobjc.A.dylib`_objc_init()</p>
+
+                                                        <ul>
+                                                          <li>
+                                                            <p>_dyld_objc_register_callbacks():</p>
+
+                                                            <ul>
+                                                              <li>
+                                                                <div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">_dyld_objc_callbacks_v2</span> <span class="n">callbacks</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="mi">2</span><span class="p">,</span> <span class="c1">// version</span>
+        <span class="o">&amp;</span><span class="n">map_images</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="n">load_images</span><span class="p">,</span>
+        <span class="n">unmap_image</span><span class="p">,</span>
+        <span class="n">_objc_patch_root_of_class</span>
+    <span class="p">};</span>
+    <span class="n">_dyld_objc_register_callbacks</span><span class="p">((</span><span class="n">_dyld_objc_callbacks</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">callbacks</span><span class="p">);</span>
+<span class="c1">//调用load，这与下面的调试的堆栈信息匹配。</span>
+</code></pre></div>                                                                </div>
+                                                              </li>
+                                                            </ul>
+                                                          </li>
+                                                        </ul>
+                                                      </li>
+                                                    </ul>
+                                                  </li>
+                                                </ul>
+                                              </li>
+                                            </ul>
+                                          </li>
+                                        </ul>
+                                      </li>
+                                    </ul>
+                                  </li>
+                                </ul>
+                              </li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </li>
+                    </ul>
+                  </li>
+                  <li>
+                    <p>runInitializersBottomUpPlusUpwardLinks()这里开始时调用全局构造函数的地方，在MachO的文件格式中会再添加一个section节，叫__init_offsets，这里保存着constructor函数的起始地址。</p>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<p>load:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#0	0x0000000100003a80 in +[test load] at /Users/dh/Downloads/objc-runtime-6e3b46df961a4c889ae325cf67cd92186674fbd2/debug-objc/main.m:27
+#1	0x0000000100b84856 in call_class_loads() at /Users/dh/Downloads/objc-runtime-6e3b46df961a4c889ae325cf67cd92186674fbd2/runtime/objc-loadmethod.mm:204
+#2	0x0000000100b6998d in call_load_methods at /Users/dh/Downloads/objc-runtime-6e3b46df961a4c889ae325cf67cd92186674fbd2/runtime/objc-loadmethod.mm:353
+#3	0x0000000100b69801 in load_images at /Users/dh/Downloads/objc-runtime-6e3b46df961a4c889ae325cf67cd92186674fbd2/runtime/objc-runtime-new.mm:3605
+#4	0x00007ff8170f3dc3 in dyld4::RuntimeState::notifyObjCInit(dyld4::Loader const*) ()
+#5	0x00007ff8170fdee6 in dyld4::Loader::runInitializersBottomUp(dyld4::RuntimeState&amp;, dyld3::Array&lt;dyld4::Loader const*&gt;&amp;) const ()
+#6	0x00007ff817101040 in dyld4::Loader::runInitializersBottomUpPlusUpwardLinks(dyld4::RuntimeState&amp;) const::$_1::operator()() const ()
+#7	0x00007ff8170fdf87 in dyld4::Loader::runInitializersBottomUpPlusUpwardLinks(dyld4::RuntimeState&amp;) const ()
+#8	0x00007ff81711f96d in dyld4::APIs::runAllInitializersForMain() ()
+#9	0x00007ff8170e9241 in dyld4::prepare(dyld4::APIs&amp;, dyld3::MachOAnalyzer const*) ()
+#10	0x00007ff8170e831f in start ()
+</span>
+</code></pre></div></div>
+
+<p>全局构造函数的constructor调用过程：</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#1	0x00007ff817100fca in invocation function for block in dyld4::Loader::findAndRunAllInitializers(dyld4::RuntimeState&amp;) const::$_0::operator()() const ()
+#2	0x00007ff81714271f in invocation function for block in dyld3::MachOAnalyzer::forEachInitializer(Diagnostics&amp;, dyld3::MachOAnalyzer::VMAddrConverter const&amp;, void (unsigned int) block_pointer, void const*) const ()
+#3	0x00007ff817136913 in invocation function for block in dyld3::MachOFile::forEachSection(void (dyld3::MachOFile::SectionInfo const&amp;, bool, bool&amp;) block_pointer) const ()
+#4	0x00007ff8170e407f in dyld3::MachOFile::forEachLoadCommand(Diagnostics&amp;, void (load_command const*, bool&amp;) block_pointer) const ()
+#5	0x00007ff817135adc in dyld3::MachOFile::forEachSection(void (dyld3::MachOFile::SectionInfo const&amp;, bool, bool&amp;) block_pointer) const ()
+#6	0x00007ff81714230a in dyld3::MachOAnalyzer::forEachInitializer(Diagnostics&amp;, dyld3::MachOAnalyzer::VMAddrConverter const&amp;, void (unsigned int) block_pointer, void const*) const ()
+#7	0x00007ff8170fdcfc in dyld4::Loader::findAndRunAllInitializers(dyld4::RuntimeState&amp;) const ()
+#8	0x00007ff8171035cb in dyld4::JustInTimeLoader::runInitializers(dyld4::RuntimeState&amp;) const ()
+#9	0x00007ff8170fdef1 in dyld4::Loader::runInitializersBottomUp(dyld4::RuntimeState&amp;, dyld3::Array&lt;dyld4::Loader const*&gt;&amp;) const ()
+#10	0x00007ff817101040 in dyld4::Loader::runInitializersBottomUpPlusUpwardLinks(dyld4::RuntimeState&amp;) const::$_1::operator()() const ()
+#11	0x00007ff8170fdf87 in dyld4::Loader::runInitializersBottomUpPlusUpwardLinks(dyld4::RuntimeState&amp;) const ()
+#12	0x00007ff81711f96d in dyld4::APIs::runAllInitializersForMain() ()
+#13	0x00007ff8170e9241 in dyld4::prepare(dyld4::APIs&amp;, dyld3::MachOAnalyzer const*) ()
+#14	0x00007ff8170e831f in start ()
+</span>
+</code></pre></div></div>
+
+<p>dyld4::prepare()函数会把main函数的返回地址return出来，然后start()直接调用。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">appMain</span> <span class="o">=</span> <span class="n">prepare</span><span class="p">(</span><span class="o">*</span><span class="n">state</span><span class="p">,</span> <span class="n">dyldMA</span><span class="p">);</span>
+
+<span class="kt">int</span> <span class="n">result</span> <span class="o">=</span> <span class="n">appMain</span><span class="p">(</span><span class="n">state</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">process</span><span class="p">.</span><span class="n">argc</span><span class="p">,</span> <span class="n">state</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">process</span><span class="p">.</span><span class="n">argv</span><span class="p">,</span> <span class="n">state</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">process</span><span class="p">.</span><span class="n">envp</span><span class="p">,</span> <span class="n">state</span><span class="o">-&gt;</span><span class="n">config</span><span class="p">.</span><span class="n">process</span><span class="p">.</span><span class="n">apple</span><span class="p">);</span>
+
+<span class="n">state</span><span class="o">-&gt;</span><span class="n">libSystemHelpers</span><span class="o">-&gt;</span><span class="n">exit</span><span class="p">(</span><span class="n">result</span><span class="p">);</span>
+
+</code></pre></div></div>
+
+</section>
+</article>
+
+<div class="left-right-navigation">
+	
+	
+	<a class="right" href="/2025/03/fuzzingbook-study/">
+		<div>fuzzingbook阅读笔记</div>
+		<i class="fa fa-chevron-right"></i>
+	</a>
+	
+</div>
+
+
+		</div>
+		<footer class="site-footer">
+	<div>
+		&copy; 2025 p1ain0
+		<span>&middot;</span>
+		Code licensed under <a rel="license" href="https://github.com/bazad/bazad.github.io/blob/master/LICENSE">MIT</a>
+		<span>&middot;</span>
+		Content licensed under <a rel="license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank">CC BY 4.0</a>
+		<span>&middot;</span>
+		<a href="/about-this-site">About this site</a>
+	</div>
+</footer>
+
+		
+	</body>
+</html>
