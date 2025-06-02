@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html class="no-js">
+	<head>
+	<meta charset="utf-8">
+
+	
+
+	<title>C++异常处理机制 | kaka</title>
+	
+	<meta name="description" content="这篇文章通过一道ctf题目说说C++的异常处理机制。">
+	
+
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<!-- CSS -->
+	<link rel="stylesheet" href="/css/main.css">
+
+	<!--Favicon-->
+	<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+
+	<!-- Canonical -->
+	<link rel="canonical" href="http://localhost:4000/2025/04/C++%E5%BC%82%E5%B8%B8%E5%A4%84%E7%90%86%E6%9C%BA%E5%88%B6/">
+
+	<!-- RSS -->
+	<link rel="alternate" type="application/atom+xml" title="kaka" href="http://localhost:4000/feed.xml">
+
+	<!-- Font Awesome -->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+	
+
+	
+</head>
+
+	<body>
+		<header class="site-header">
+	
+	<h1 class="site-title">
+		<a href="/">kaka</a>
+	</h1>
+	<div class="space padding"></div>
+	<nav class="site-navigation">
+		<ul>
+			
+			
+			
+			
+			
+			
+			<li>
+				<a class="page-link" href="/about/">
+					About
+				</a>
+			</li>
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+
+<li>
+	<a href="/feed.xml" title="RSS feed">
+			<i class="fa fa-fw fa-rss"></i>
+	</a>
+</li>
+
+
+
+<li>
+	<a href="https://github.com/seacho" title="Github">
+			<i class="fa fa-fw fa-github"></i>
+	</a>
+</li>
+
+
+
+<li>
+	<a href="mailto:assdfgzxcv4@gmail.com" title="Email">
+			<i class="fa fa-fw fa-envelope"></i>
+	</a>
+</li>
+
+
+
+		</ul>
+	</nav>
+</header>
+
+		<div class="content">
+			<article class="post">
+	<header>
+		<h1 class="title">C++异常处理机制</h1>
+		<p class="byline-dateline">
+	
+	<span class="dateline">April 27, 2025</span>
+</p>
+
+
+	</header>
+	<section class="post-content"><p>我们平时一直用C++的 <code class="language-plaintext highlighter-rouge">try catch</code>，但是对它的内部机制是一点也不清楚。这次ctf题目中有一个异常的题目。借这次机会搞清楚。</p>
+
+<p>题目也简单，在bss段中可以溢出，我们可以通过覆盖bss段上的数据。因为异常处理的registered_frames也在这个bss段里，所以我们通过覆盖这个结构体伪造一个，达到劫持的目的。首先我们需要研究明白异常的处理机制。（结果队友比我先研究出来了，先我一步放出来了完整的writup。）</p>
+
+<!--more-->
+
+<h2 id="cie和fde简介">CIE和FDE简介</h2>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">dwarf_cie</span>
+<span class="p">{</span>
+  <span class="n">uword</span> <span class="n">length</span><span class="p">;</span> <span class="c1">//CIE的长度。0xffffffff表示下一个64位包含长度</span>
+  <span class="n">sword</span> <span class="n">CIE_id</span><span class="p">;</span> <span class="c1">//CIE为0</span>
+  <span class="n">ubyte</span> <span class="n">version</span><span class="p">;</span> <span class="c1">// CIE的版本信息</span>
+  <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">augmentation</span><span class="p">[];</span> <span class="c1">//以 NUL 终止的扩展字符串。</span>
+  <span class="c1">//代码对齐因子，一个无符号的 LEB128（LEB128 是 DWARF 编码的数字，这里不会进行描述）。对于.eh_frame，这个值始终应该是 1。</span>
+  <span class="c1">//数据对齐因子，一个有符号的 LEB128。这是从偏移指令中提取出来的常量，如在.debug_frame 中。</span>
+  <span class="c1">//返回地址寄存器。在 CIE 版本 1 中，这是一个单字节；在 CIE 版本 3 中，这是一个无符号的 LEB128。这表示帧表中哪一列代表返回地址。</span>
+  <span class="c1">//根据augmentation的信息有不同的表示</span>
+  <span class="c1">//aug[0]='z'：我们现在找到一个无符号 LEB128，它是增强数据的长度，向上取整以确保 CIE 以地址边界结束。这用于在遇到未识别的增强字符时跳转到增强数据的末尾。</span>
+  <span class="c1">//aug[0]='L'：CIE 中的下一个字节是 LSDA（语言特定数据区）编码。这是一个 DW_EH_PE_xxx 值（稍后描述）。默认值为 DW_EH_PE_absptr。</span>
+  <span class="c1">//aug[0]='R'：CIE 中的下一个字节是 FDE 编码。这是一个 DW_EH_PE_xxx 值。默认为 DW_EH_PE_absptr。</span>
+  <span class="c1">//aug[0]='S'：CIE 代表信号处理程序的调用堆栈帧。在回溯堆栈时，信号堆栈帧的处理略有不同：指令指针假定在下一个要执行的指令之前，而不是之后。</span>
+  <span class="c1">//aug[0]='P'：CIE 中的下一个字节是个人编码，一个 DW_EH_PE_xxx 值。之后是一个指向个人函数的指针，使用个人编码进行编码。我将在另一天描述个人函数。</span>
+  <span class="c1">//剩余的字节是一个 DW_CFA_xxx 操作码数组，它定义了帧表的初始值。然后是 DW_CFA_nop 填充字节，以匹配 CIE 的总长度。</span>
+  
+<span class="p">}</span> <span class="n">__attribute__</span> <span class="p">((</span><span class="n">packed</span><span class="p">,</span> <span class="n">aligned</span> <span class="p">(</span><span class="n">__alignof__</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">))));</span>
+
+<span class="cm">/* The first few fields of an FDE.  */</span>
+<span class="k">struct</span> <span class="nc">dwarf_fde</span>
+<span class="p">{</span>
+  <span class="n">uword</span> <span class="n">length</span><span class="p">;</span>
+  <span class="n">sword</span> <span class="n">CIE_delta</span><span class="p">;</span> <span class="c1">//它是从该字段到与之关联的 CIE 起始位置的字节偏移量。字节偏移量指向 CIE 的长度记录。正值表示向后；也就是说，您必须从当前字节位置减去 ID 字段的值以获得 CIE 位置。</span>
+  <span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">pc_begin</span><span class="p">[];</span>
+  <span class="c1">//此 FDE 适用的起始地址。这是使用相关 CIE 指定的 FDE 编码进行编码的。</span>
+  <span class="c1">//此 FDE 适用的起始地址之后的字节数。这是使用 FDE 编码进行编码的。</span>
+  <span class="c1">//如果 CIE 扩展字符串以“z”开头，则 FDE 接下来有一个无符号的 LEB128，表示 FDE 扩展数据的总大小。这可以用来跳过与未识别的扩展字符相关联的数据。</span>
+  <span class="c1">//如果 CIE 没有指定 DW_EH_PE_omit 作为 LSDA 编码，则 FDE 接下来有一个指向 LSDA 的指针，编码方式由 CIE 指定。</span>
+  <span class="c1">//FDE 中剩余的字节是一个 DW_CFA_xxx 操作码数组，这些操作码用于设置帧表中的值，以便回溯到调用者。</span>
+<span class="p">}</span> <span class="n">__attribute__</span> <span class="p">((</span><span class="n">packed</span><span class="p">,</span> <span class="n">aligned</span> <span class="p">(</span><span class="n">__alignof__</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">))));</span>
+</code></pre></div></div>
+
+<p>DW_EH_PE_xxx 编码描述了如何在 CIE 或 FDE 中编码值。基本编码方式如下：</p>
+
+<ul>
+  <li>
+    <p>DW_EH_PE_absptr = 0x00：绝对指针。大小由是否为 32 位或 64 位地址空间决定，将是 32 位或 64 位。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_omit = 0xff：该值被省略。</p>
+  </li>
+  <li>DW_EH_PE_uleb128 = 0x01：该值是无符号 LEB128。</li>
+  <li>DW_EH_PE_udata2 = 0x02, DW_EH_PE_udata4 = 0x03, DW_EH_PE_udata8 = 0x04：值以指定字节数的无符号数据形式存储。</li>
+  <li>
+    <p>DW_EH_PE_signed = 0x08：表示一个有符号数。大小由是否为 32 位或 64 位地址空间决定。我认为在实践中这种情况从未出现在 CIE 或 FDE 中。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_sleb128 = 0x09：表示一个有符号的 LEB128。在实际中未使用。</p>
+  </li>
+  <li>DW_EH_PE_sdata2 = 0x0a，DW_EH_PE_sdata4 = 0x0b，DW_EH_PE_sdata8 = 0x0c：值以指定字节数的带符号数据存储。在实际中未使用。</li>
+</ul>
+
+<p>此外，上述基本编码之外，还有修饰符。</p>
+
+<ul>
+  <li>
+    <p>DW_EH_PE_pcrel = 0x10：值是 PC 相对的。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_textrel = 0x20: 值为文本相对。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_datarel = 0x30：值是数据相关。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_funcrel = 0x40：值相对于函数起始位置。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_aligned = 0x50：值对齐：根据需要插入填充字节以使值自然对齐。</p>
+  </li>
+  <li>
+    <p>DW_EH_PE_indirect = 0x80：这实际上是真实值的地址。</p>
+  </li>
+</ul>
+
+<h2 id="异常的处理流程">异常的处理流程</h2>
+
+<p>为了展开栈，必须找到与给定pc值关联的 FDE。这个问题有两个步骤。第一步是找到所有的 CIE 和 FDE。第二步是，在给定 FDE 集合的情况下，找到您需要的 FDE。</p>
+
+<p>以前这种方法的工作方式是 gcc 会创建一个全局构造函数，该函数调用 <code class="language-plaintext highlighter-rouge">__register_frame_info</code> ，传递指向.eh_frame 数据的指针和指向对象的指针。后者的指针将指示共享库，并在 <code class="language-plaintext highlighter-rouge">dlclose</code> 之后注销信息。在寻找 FDE 时，展开器会遍历已注册的帧，并对它们进行排序。然后它会使用排序后的列表来找到所需的 FDE。</p>
+
+<p>以前的方法仍然有效，但如今，至少在 GNU/Linux 上，排序是在link时进行的，这比在rubntime时进行更好。gold 和 GNU 链接器都支持一个选项 <code class="language-plaintext highlighter-rouge">--eh-frame-hdr</code> ，告诉它们为所有的.eh_frame 部分构造一个头。这个头放在名为.eh_frame_hdr 的部分中，也放在 <code class="language-plaintext highlighter-rouge">PT_GNU_EH_FRAME</code> 段中。在运行时，展开器可以通过调用 <code class="language-plaintext highlighter-rouge">dl_iterate_phdr</code>来找到所有的 <code class="language-plaintext highlighter-rouge">PT_GNU_EH_FRAME</code> 段。</p>
+
+<p>.eh_frame_hdr 部分的格式如下：</p>
+
+<p>引用来自https://refspecs.linuxfoundation.org/LSB_1.3.0/gLSB/gLSB/ehframehdr.html的表格。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Encoding</th>
+      <th>Field</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>unsigned byte</td>
+      <td>version</td>
+    </tr>
+    <tr>
+      <td>unsigned byte</td>
+      <td>eh_frame_ptr_enc</td>
+    </tr>
+    <tr>
+      <td>unsigned byte</td>
+      <td>fde_count_enc</td>
+    </tr>
+    <tr>
+      <td>unsigned byte</td>
+      <td>table_enc</td>
+    </tr>
+    <tr>
+      <td>encoded</td>
+      <td>eh_frame_ptr</td>
+    </tr>
+    <tr>
+      <td>encoded</td>
+      <td>fde_count</td>
+    </tr>
+    <tr>
+      <td> </td>
+      <td>binary search table</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>在 C++中抛出异常不仅需要栈回溯。当程序回溯时，必须执行局部变量的析构函数。需要检查捕获子句以确定是否应该捕获异常。还需要检查异常规范以确定异常是否应该被重定向到未处理的处理程序。在 Go、Java 以及使用 gcc 的 <code class="language-plaintext highlighter-rouge">cleanup</code> 函数属性时，C 语言也会出现类似的问题。</p>
+
+<p>每个 CIE（回溯数据中的控制信息）可能包含一个指向 personality 函数的指针，每个 FDE（帧描述符表）可能包含一个指向 LSDA（语言特定数据区域）的指针。每种语言都有自己的 personality 函数。LSDA 仅由 personality 函数使用，因此原则上可以针对每种语言不同。然而，至少对于 gcc 来说，每种语言都使用相同的格式，因为 LSDA 是由语言无关的中端生成的。</p>
+
+<p>来看这么一个程序：</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">test</span><span class="p">()</span> <span class="p">{</span>
+	<span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+	<span class="k">throw</span> <span class="n">i</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">//反汇编</span>
+<span class="kt">void</span> <span class="kr">__cdecl</span> <span class="n">__noreturn</span> <span class="n">test</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="n">_DWORD</span> <span class="o">*</span><span class="n">exception</span><span class="p">;</span> <span class="c1">// rax</span>
+  <span class="kt">int</span> <span class="n">i</span><span class="p">;</span> <span class="c1">// [rsp+Ch] [rbp-4h]</span>
+
+  <span class="n">exception</span> <span class="o">=</span> <span class="n">_cxa_allocate_exception</span><span class="p">(</span><span class="mi">4u</span><span class="p">);</span>
+  <span class="o">*</span><span class="n">exception</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+  <span class="n">_cxa_throw</span><span class="p">(</span><span class="n">exception</span><span class="p">,</span> <span class="p">(</span><span class="k">struct</span> <span class="nc">type_info</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="err">`</span><span class="n">typeinfo</span> <span class="k">for</span><span class="err">'</span><span class="kt">int</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>通过反汇编去c++的libstdc++源码中去寻找相应的实现要简单的多。</p>
+
+<h3 id="exception处理流程从throw到catch">exception处理流程(从throw到catch)：</h3>
+
+<ul>
+  <li>
+    <p>调用<code class="language-plaintext highlighter-rouge">__cxa_allocate_exception</code>分配空间存放exception object和exception header <code class="language-plaintext highlighter-rouge">__cxa_exception</code></p>
+  </li>
+  <li>
+    <p>调用<code class="language-plaintext highlighter-rouge">__cxa_throw</code> (<code class="language-plaintext highlighter-rouge">libstdc++v3/libsupc++/eh_throw.cc</code>的<code class="language-plaintext highlighter-rouge">__cxxabiv1::__cxa_throw</code>)：</p>
+
+    <ul>
+      <li>
+        <p>设置<code class="language-plaintext highlighter-rouge">__cxa_exception</code>字段，</p>
+
+        <ul>
+          <li>
+            <p>调用<code class="language-plaintext highlighter-rouge">_Unwind_RaiseException</code>（<code class="language-plaintext highlighter-rouge">/libgcc/unwind.inc</code>文件中<code class="language-plaintext highlighter-rouge">_Unwind_RaiseException</code>，这个函数是Itanium ABI定义的异常处理函数，它函数是语言无关的，其他语言也可以使用这个函数实现异常处理等功能）</p>
+
+            <ul>
+              <li>
+                <p>Phase 1：搜索，解开堆栈，使用<code class="language-plaintext highlighter-rouge">_UA_SEARCH_PHASE</code>标志集调用例程。不修改堆栈。</p>
+
+                <ul>
+                  <li>
+                    <p>该函数维护的两个关键的结构体：</p>
+
+                    <ul>
+                      <li>
+                        <p><code class="language-plaintext highlighter-rouge">_Unwind_Context current_context</code>：寄存器和frame展开的信息。</p>
+                      </li>
+                      <li>
+                        <p><code class="language-plaintext highlighter-rouge">_Unwind_FrameState fs</code>： frame的展开信息的结果。</p>
+                      </li>
+                    </ul>
+                  </li>
+                  <li>
+                    <p>主要操作在这里：<code class="language-plaintext highlighter-rouge">uw_frame_state_for</code>：通过给定堆栈帧的_Unwind_Context上下文，查找其调用者的FDE并将其解码为fs。此函数还设置CONTEXT的args _size和lsda成员，因为它们实际上是关于调用者frame的信息。</p>
+
+                    <p>fde查找逻辑主要是在<code class="language-plaintext highlighter-rouge">_Unwind_Find_FDE</code>函数中：</p>
+
+                    <ul>
+                      <li>
+                        <p>在 ELF 系统中，回溯依赖于存储在 <code class="language-plaintext highlighter-rouge">.eh_frame</code> 节中的 DWARF“调用帧信息”（CFI），它包括：</p>
+
+                        <ul>
+                          <li>Common Information Entries (CIEs)：公共信息条目（CIEs），描述公共回溯前导（对齐因子、寄存器规则、个性例程）。</li>
+                          <li>Frame Description Entries (FDEs)：帧描述条目（FDEs）：对于每个函数或代码区域，指定地址范围（ <code class="language-plaintext highlighter-rouge">initial_location</code> ， <code class="language-plaintext highlighter-rouge">address_range</code> ）以及一系列 DWARF CFI 指令，用于在 MaskRay 的回溯过程中计算寄存器和栈调整。</li>
+                        </ul>
+
+                        <p>对于每个查找线性扫描 <code class="language-plaintext highlighter-rouge">.eh_frame</code> ，其复杂度为 O(N)，其中 N 为 FDEs 的数量，因此 ELF 链接器可能会输出一个二分搜索友好的 <code class="language-plaintext highlighter-rouge">.eh_frame_hdr</code> （带有 <code class="language-plaintext highlighter-rouge">PT_GNU_EH_FRAME</code> ），以加速查找过程。</p>
+                      </li>
+                      <li>
+                        <p>在 Itanium C++ ABI（及其 Linux 实现）中， <code class="language-plaintext highlighter-rouge">_Unwind_Find_FDE</code> 的声明如下：</p>
+
+                        <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">dwarf_eh_bases</span> <span class="p">{</span>
+    <span class="kt">uintptr_t</span> <span class="n">tbase</span><span class="p">;</span>
+    <span class="kt">uintptr_t</span> <span class="n">dbase</span><span class="p">;</span> 
+    <span class="kt">uintptr_t</span> <span class="n">func</span><span class="p">;</span> 
+<span class="p">};</span>
+<span class="c1">//dwarf_eh_bases 字段允许后续例程在解释 FDE/CIE 中的编码 DWARF 值时应用重定位。</span>
+<span class="k">extern</span> <span class="k">const</span> <span class="n">fde</span> <span class="o">*</span> <span class="n">_Unwind_Find_FDE</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">,</span> <span class="k">struct</span> <span class="nc">dwarf_eh_bases</span> <span class="o">*</span><span class="p">);</span>
+</code></pre></div>                        </div>
+
+                        <p>函数内部首先遍历<code class="language-plaintext highlighter-rouge">seen_objects</code>链表，该链表包含 <code class="language-plaintext highlighter-rouge">struct object</code> 的条目，这些条目的帧描述条目（FDE）表已经初始化，（至少已经填充了它们的 <code class="language-plaintext highlighter-rouge">pc_begin</code> 和 <code class="language-plaintext highlighter-rouge">count</code> 字段）并且这些条目按降序排序以加快回溯时的查找速度 。每个 <code class="language-plaintext highlighter-rouge">struct object</code> 封装了基于 DWARF 的堆栈回溯所需的必要元数据——即其 <code class="language-plaintext highlighter-rouge">.eh_frame</code> 区域的开始（ <code class="language-plaintext highlighter-rouge">pc_begin</code> ）、重定位基址（ <code class="language-plaintext highlighter-rouge">tbase</code> / <code class="language-plaintext highlighter-rouge">dbase</code> ）、指向其 FDE 数据的指针（通过一个允许单块、数组或排序向量表示的union），以及bookkeeping标志/计数（通过一个位字段union）——如 <code class="language-plaintext highlighter-rouge">unwind-dw2-fde.h</code> 定义 。</p>
+
+                        <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">//每个提供 unwind 表的已加载图像（可执行文件或共享库）都由一个 struct object 表示，它捕获了其 .eh_frame 条目的位置和格式。在非原子路径中，这些对象形成一个链表（ seen_objects / unseen_objects ）；在原子快速路径中，叶 btree_node 条目直接指向它们</span>
+<span class="k">struct</span> <span class="nc">object</span>
+<span class="p">{</span>
+  <span class="kt">void</span> <span class="o">*</span><span class="n">pc_begin</span><span class="p">;</span>  <span class="c1">//标记对象 .eh_frame 部分的第一个地址</span>
+  <span class="kt">void</span> <span class="o">*</span><span class="n">tbase</span><span class="p">;</span>  <span class="c1">//(text base) </span>
+  <span class="kt">void</span> <span class="o">*</span><span class="n">dbase</span><span class="p">;</span>  <span class="c1">//(data base)</span>
+  <span class="k">union</span> <span class="p">{</span>
+    <span class="k">const</span> <span class="k">struct</span> <span class="nc">dwarf_fde</span> <span class="o">*</span><span class="n">single</span><span class="p">;</span> <span class="c1">//single 用于连续的 DWARF FDE 块</span>
+    <span class="k">struct</span> <span class="nc">dwarf_fde</span> <span class="o">**</span><span class="n">array</span><span class="p">;</span> <span class="c1">//array 用于 FDE 指针表</span>
+    <span class="k">struct</span> <span class="nc">fde_vector</span> <span class="o">*</span><span class="n">sort</span><span class="p">;</span> <span class="c1">//用于 struct fde_vector 存储辅助排序指针数组</span>
+  <span class="p">}</span> <span class="n">u</span><span class="p">;</span>  <span class="c1">//提供了三种引用对象 FDE 数据的方法：</span>
+            
+  <span class="k">union</span> <span class="p">{</span>
+    <span class="k">struct</span> <span class="p">{</span>
+      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">sorted</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span> <span class="c1">//表示是否已构建排序数组，</span>
+      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">from_array</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span> <span class="c1">//表示 FDE 是否来自显式数组，</span>
+      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">mixed_encoding</span> <span class="o">:</span> <span class="mi">1</span><span class="p">;</span> <span class="c1">//混合指针编码标志，</span>
+      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">encoding</span> <span class="o">:</span> <span class="mi">8</span><span class="p">;</span> <span class="c1">//存储 DWARF 指针编码，</span>
+      <span class="cm">/* ??? Wish there was an easy way to detect a 64-bit host here;
+	 we've got 32 bits left to play with...  */</span>
+      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">count</span> <span class="o">:</span> <span class="mi">21</span><span class="p">;</span> <span class="c1">// 记录有多少 FDE 存在</span>
+    <span class="p">}</span> <span class="n">b</span><span class="p">;</span>
+    <span class="kt">size_t</span> <span class="n">i</span><span class="p">;</span>
+  <span class="p">}</span> <span class="n">s</span><span class="p">;</span> <span class="c1">//包含一组位域</span>
+            
+<span class="cp">#ifdef DWARF2_OBJECT_END_PTR_EXTENSION
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">fde_end</span><span class="p">;</span> <span class="c1">//标记 FDE 列表的结束</span>
+<span class="cp">#endif
+</span>            
+  <span class="k">struct</span> <span class="nc">object</span> <span class="o">*</span><span class="n">next</span><span class="p">;</span> <span class="c1">//全一个指向全局列表的指针</span>
+<span class="p">};</span>
+</code></pre></div>                        </div>
+
+                        <p>当 <code class="language-plaintext highlighter-rouge">_Unwind_Find_FDE</code> 被调用时，实现首先遍历 <code class="language-plaintext highlighter-rouge">seen_objects</code> 列表（通常在互斥锁或原子操作下进行）以快速消除地址范围不能包含目标 PC 的对象；如果没有找到匹配项，则处理 <code class="language-plaintext highlighter-rouge">unseen_objects</code> 列表中的任何新注册的对象（计数，可选排序）并将它们追加到 <code class="language-plaintext highlighter-rouge">seen_objects</code> ，保持其不变序。</p>
+
+                        <ul>
+                          <li>search_object:   用于定位给定程序计数器（ <code class="language-plaintext highlighter-rouge">pc</code> ）的单个加载对象的 unwind 信息中的匹配 Frame Description Entry (FDE)。它首先确保对象的 FDE 已初始化，并在可能的情况下排序，然后使用二分搜索（用于排序数据）或线性扫描（用于未排序数据）来找到覆盖 <code class="language-plaintext highlighter-rouge">pc</code> 的 FDE。如果不存在这样的 FDE，则返回 <code class="language-plaintext highlighter-rouge">NULL</code> 并继续到下一个对象。</li>
+                        </ul>
+                      </li>
+                      <li>
+                        <p>开启ATOMIC_FDE_FAST_PATH 宏定义的时候，就不用seen_objects了。而是<code class="language-plaintext highlighter-rouge">registered_frames</code> ，这个变量用的是B树<code class="language-plaintext highlighter-rouge">btree</code>组织，而不是链表。但是大致原理差不多的，就是查找方式不一样，不是<code class="language-plaintext highlighter-rouge">search_objects</code>，而是<code class="language-plaintext highlighter-rouge">btree_lookup</code>。</p>
+
+                        <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">btree</span>
+<span class="p">{</span>
+  <span class="c1">// The root of the btree.</span>
+  <span class="k">struct</span> <span class="nc">btree_node</span> <span class="o">*</span><span class="n">root</span><span class="p">;</span>
+  <span class="c1">// The free list of released node.</span>
+  <span class="k">struct</span> <span class="nc">btree_node</span> <span class="o">*</span><span class="n">free_list</span><span class="p">;</span>
+  <span class="c1">// The version lock used to protect the root.</span>
+  <span class="k">struct</span> <span class="nc">version_lock</span> <span class="n">root_lock</span><span class="p">;</span>
+<span class="p">};</span>
+<span class="c1">//libgcc 定义了 static struct btree registered_frames(); 及 registered_objects() 和一个关闭标志in_shutdown</span>
+            
+<span class="c1">//release_registered_frames()被声明为__attribute__ ((destructor))调用 btree_destroy(&amp;registered_frames) 并设置 in_shutdown = true ，确保在程序退出时 b 树及其条目能够干净地卸载。GitHub</span>
+            
+            
+<span class="c1">// A btree node.</span>
+<span class="k">struct</span> <span class="nc">btree_node</span>
+<span class="p">{</span>
+  <span class="c1">// The version lock used for optimistic lock coupling.</span>
+  <span class="k">struct</span> <span class="nc">version_lock</span> <span class="n">version_lock</span><span class="p">;</span>
+  <span class="c1">// The number of entries.</span>
+  <span class="kt">unsigned</span> <span class="n">entry_count</span><span class="p">;</span>
+  <span class="c1">// The type.</span>
+  <span class="k">enum</span> <span class="n">node_type</span> <span class="n">type</span><span class="p">;</span>
+  <span class="c1">// The payload.</span>
+  <span class="k">union</span>
+  <span class="p">{</span>
+    <span class="c1">// The inner nodes have fence keys, i.e., the right-most entry includes a</span>
+    <span class="c1">// separator.</span>
+    <span class="k">struct</span> <span class="nc">inner_entry</span> <span class="n">children</span><span class="p">[</span><span class="n">max_fanout_inner</span><span class="p">];</span>
+    <span class="k">struct</span> <span class="nc">leaf_entry</span> <span class="n">entries</span><span class="p">[</span><span class="n">max_fanout_leaf</span><span class="p">];</span>
+  <span class="p">}</span> <span class="n">content</span><span class="p">;</span>
+<span class="p">};</span>
+            
+<span class="c1">// Inner entry. The child tree contains all entries &lt;= separator.</span>
+<span class="k">struct</span> <span class="nc">inner_entry</span>
+<span class="p">{</span>
+  <span class="n">uintptr_type</span> <span class="n">separator</span><span class="p">;</span>
+  <span class="k">struct</span> <span class="nc">btree_node</span> <span class="o">*</span><span class="n">child</span><span class="p">;</span>
+<span class="p">};</span>
+            
+<span class="c1">// Leaf entry. Stores an object entry.</span>
+<span class="k">struct</span> <span class="nc">leaf_entry</span>
+<span class="p">{</span>
+  <span class="n">uintptr_type</span> <span class="n">base</span><span class="p">,</span> <span class="n">size</span><span class="p">;</span>
+  <span class="k">struct</span> <span class="nc">object</span> <span class="o">*</span><span class="n">ob</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div>                        </div>
+
+                        <p>这里也有object结构体。</p>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <p><code class="language-plaintext highlighter-rouge">_Unwind_RaiseException</code>执行cleanup phase：调用personality查找包含out-of-scope变量的stack frames，对于每个stack frame，跳转到其landing pad执行destructors。该landing pad用<code class="language-plaintext highlighter-rouge">_Unwind_Resume</code>跳转回cleanup phase</p>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<p>参考链接：</p>
+
+<p><a href="https://maskray.me/blog/2020-11-08-stack-unwinding#中文版">maskray’s blog</a></p>
+
+</section>
+</article>
+
+<div class="left-right-navigation">
+	
+	<a class="left" href="/2025/05/Objective-C%E5%BA%95%E5%B1%82%E5%8E%9F%E7%90%86/">
+		<i class="fa fa-chevron-left"></i>
+		<div>Objective-C底层原理</div>
+	</a>
+	
+	
+	<a class="right" href="/2025/03/fuzzingbook-study/">
+		<div>fuzzingbook阅读笔记</div>
+		<i class="fa fa-chevron-right"></i>
+	</a>
+	
+</div>
+
+
+		</div>
+		<footer class="site-footer">
+	<div>
+		&copy; 2025 p1ain0
+		<span>&middot;</span>
+		Code licensed under <a rel="license" href="https://github.com/bazad/bazad.github.io/blob/master/LICENSE">MIT</a>
+		<span>&middot;</span>
+		Content licensed under <a rel="license" href="https://creativecommons.org/licenses/by/4.0/" target="_blank">CC BY 4.0</a>
+		<span>&middot;</span>
+		<a href="/about-this-site">About this site</a>
+	</div>
+</footer>
+
+		
+	</body>
+</html>

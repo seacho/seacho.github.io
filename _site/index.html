@@ -145,6 +145,32 @@
 	<article class="excerpt">
 		<header>
 			<h1>
+				<a class="post-link" href="/2025/04/C++%E5%BC%82%E5%B8%B8%E5%A4%84%E7%90%86%E6%9C%BA%E5%88%B6/">
+					C++异常处理机制
+				</a>
+			</h1>
+			<p class="byline-dateline">
+	
+	<span class="dateline">April 27, 2025</span>
+</p>
+
+
+		</header>
+		<div class="excerpt">
+			<p>我们平时一直用C++的 <code class="language-plaintext highlighter-rouge">try catch</code>，但是对它的内部机制是一点也不清楚。这次ctf题目中有一个异常的题目。借这次机会搞清楚。</p>
+
+<p>题目也简单，在bss段中可以溢出，我们可以通过覆盖bss段上的数据。因为异常处理的registered_frames也在这个bss段里，所以我们通过覆盖这个结构体伪造一个，达到劫持的目的。首先我们需要研究明白异常的处理机制。（结果队友比我先研究出来了，先我一步放出来了完整的writup。）</p>
+
+
+		</div>
+		<div class="continue">
+			<a href="/2025/04/C++%E5%BC%82%E5%B8%B8%E5%A4%84%E7%90%86%E6%9C%BA%E5%88%B6/">Continue reading...</a>
+		</div>
+	</article>
+	
+	<article class="excerpt">
+		<header>
+			<h1>
 				<a class="post-link" href="/2025/03/fuzzingbook-study/">
 					fuzzingbook阅读笔记
 				</a>
